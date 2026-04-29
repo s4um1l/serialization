@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 05 — FlatBuffers Buffer Layout Visualizer</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: #0d1117;
+  color: #e6edf3;
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+h1 { font-size: 22px; color: #58a6ff; margin-bottom: 4px; }
+h2 { font-size: 17px; color: #79c0ff; margin: 28px 0 12px 0; }
+h3 { font-size: 15px; color: #d2a8ff; margin: 20px 0 8px 0; }
+.subtitle { color: #8b949e; font-size: 13px; margin-bottom: 24px; }
+a { color: #58a6ff; }
+
+/* Buffer Layout */
+.buffer-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 12px 0;
+  padding: 12px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+}
+.byte-cell {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+  position: relative;
+}
+.byte-cell:hover { transform: scale(1.3); z-index: 10; border-color: #e6edf3; }
+.byte-cell.highlight { border: 2px solid #f0f6fc; box-shadow: 0 0 8px rgba(88,166,255,0.5); transform: scale(1.2); z-index: 5; }
+.byte-cell.dim { opacity: 0.25; }
+
+/* Color scheme */
+.region-root { background: #da3633; color: #fff; }
+.region-vtable { background: #8957e5; color: #fff; }
+.region-table { background: #1f6feb; color: #fff; }
+.region-string { background: #238636; color: #fff; }
+.region-padding { background: #30363d; color: #8b949e; }
+
+/* Tooltip */
+.tooltip {
+  position: fixed;
+  background: #1c2128;
+  border: 1px solid #444c56;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 12px;
+  max-width: 350px;
+  z-index: 100;
+  pointer-events: none;
+  display: none;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+.tooltip .label { color: #58a6ff; font-weight: bold; }
+.tooltip .detail { color: #8b949e; margin-top: 4px; }
+
+/* Legend */
+.legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.legend-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+}
+
+/* Field list */
+.field-list {
+  margin: 12px 0;
+  padding: 0;
+}
+.field-item {
+  display: inline-block;
+  padding: 6px 14px;
+  margin: 3px;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.15s;
+}
+.field-item:hover { background: #30363d; border-color: #58a6ff; }
+.field-item.active { background: #1f6feb; border-color: #58a6ff; color: #fff; }
+
+/* Comparison panels */
+.comparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 16px 0;
+}
+.panel {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 16px;
+}
+.panel h3 { margin-top: 0; }
+.panel .stat { font-size: 24px; font-weight: bold; margin: 8px 0; }
+.panel .stat.good { color: #3fb950; }
+.panel .stat.bad { color: #f85149; }
+
+/* Mini buffer strip */
+.mini-buffer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  margin: 8px 0;
+}
+.mini-byte {
+  width: 6px;
+  height: 18px;
+  border-radius: 1px;
+  transition: all 0.3s;
+}
+.mini-byte.untouched { background: #21262d; }
+.mini-byte.touched { background: #f85149; }
+.mini-byte.touched-fb { background: #3fb950; }
+
+/* Bar chart */
+.bar-chart {
+  margin: 16px 0;
+}
+.bar-row {
+  display: flex;
+  align-items: center;
+  margin: 6px 0;
+  gap: 8px;
+}
+.bar-label {
+  width: 200px;
+  text-align: right;
+  font-size: 12px;
+  color: #8b949e;
+}
+.bar-track {
+  flex: 1;
+  height: 28px;
+  background: #161b22;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  padding-left: 8px;
+  font-size: 11px;
+  font-weight: bold;
+  transition: width 0.8s ease;
+}
+.bar-fill.proto { background: #f85149; color: #fff; }
+.bar-fill.fb { background: #3fb950; color: #fff; }
+
+/* Animation */
+@keyframes readPulse {
+  0% { box-shadow: 0 0 0 rgba(88,166,255,0); }
+  50% { box-shadow: 0 0 12px rgba(88,166,255,0.8); }
+  100% { box-shadow: 0 0 0 rgba(88,166,255,0); }
+}
+.byte-cell.reading {
+  animation: readPulse 0.6s ease;
+  border-color: #58a6ff;
+  z-index: 20;
+}
+
+/* Step indicator */
+.step-indicator {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  font-size: 13px;
+  min-height: 48px;
+}
+.step-indicator .step-num {
+  color: #58a6ff;
+  font-weight: bold;
+}
+
+/* Sections */
+.section {
+  margin: 32px 0;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #21262d;
+}
+</style>
+</head>
+<body>
+
+<h1>Chapter 05 — FlatBuffers Buffer Layout</h1>
+<p class="subtitle">Interactive visualizer: hover bytes, click fields to trace the zero-copy read path</p>
+
+<!-- Section 1: Buffer Layout -->
+<div class="section">
+<h2>1. FlatBuffer Byte Layout</h2>
+<p style="color:#8b949e; font-size:13px; margin-bottom:8px;">
+A simplified FoodDash Order with 8 fields, encoded as a FlatBuffer (140 bytes).
+Hover any byte to see what it represents. Click a field name below to animate the read path.
+</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-swatch" style="background:#da3633"></div> Root offset</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#8957e5"></div> vtable</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#1f6feb"></div> Table data</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#238636"></div> Strings</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#30363d"></div> Padding</div>
+</div>
+
+<div class="buffer-container" id="bufferViz"></div>
+
+<div class="step-indicator" id="stepIndicator">
+  Click a field name below to trace the read path through the buffer.
+</div>
+
+<h3>Click a field to trace its read path:</h3>
+<div class="field-list" id="fieldList"></div>
+</div>
+
+<!-- Section 2: Zero-Copy Comparison -->
+<div class="section">
+<h2>2. Bytes Touched: Protobuf vs FlatBuffers</h2>
+<p style="color:#8b949e; font-size:13px; margin-bottom:16px;">
+Reading 2 fields (restaurant_id + tip_cents) from a 140-byte buffer.<br>
+<span style="color:#f85149">Red</span> = bytes that must be read.
+<span style="color:#3fb950">Green</span> = bytes read by FlatBuffers.
+Dark = untouched bytes.
+</p>
+
+<div class="comparison">
+  <div class="panel">
+    <h3 style="color:#f85149">Protobuf (TLV scan)</h3>
+    <p style="color:#8b949e; font-size:12px;">Must scan every tag sequentially to find fields</p>
+    <div class="stat bad" id="protoByteCount">140 / 140 bytes read (100%)</div>
+    <div class="mini-buffer" id="protoMini"></div>
+  </div>
+  <div class="panel">
+    <h3 style="color:#3fb950">FlatBuffers (O(1) lookup)</h3>
+    <p style="color:#8b949e; font-size:12px;">Jump directly to vtable entry, then to field data</p>
+    <div class="stat good" id="fbByteCount">~24 / 140 bytes read (17%)</div>
+    <div class="mini-buffer" id="fbMini"></div>
+  </div>
+</div>
+
+<div style="display:flex; gap:12px; margin:12px 0; flex-wrap:wrap;">
+  <button class="field-item" onclick="showComparison(2)" id="cmp2">Read 2 fields</button>
+  <button class="field-item" onclick="showComparison(8)" id="cmp8">Read ALL 8 fields</button>
+</div>
+</div>
+
+<!-- Section 3: Memory Allocation Chart -->
+<div class="section">
+<h2>3. Memory Allocations per Decode</h2>
+<p style="color:#8b949e; font-size:13px; margin-bottom:16px;">
+Object allocations when reading fields from a serialized buffer.
+Fewer allocations = less GC pressure = stable p99 latency.
+</p>
+
+<div class="bar-chart">
+  <div class="bar-row">
+    <div class="bar-label">Protobuf: decode all 8 fields</div>
+    <div class="bar-track"><div class="bar-fill proto" style="width:100%" id="barProtoAll">11 alloc blocks</div></div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">FlatBuffers: read all 8 fields</div>
+    <div class="bar-track"><div class="bar-fill fb" style="width:82%" id="barFbAll">9 alloc blocks</div></div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Protobuf: decode 2 fields</div>
+    <div class="bar-track"><div class="bar-fill proto" style="width:64%" id="barProto2">7 alloc blocks</div></div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">FlatBuffers: read 2 fields</div>
+    <div class="bar-track"><div class="bar-fill fb" style="width:64%" id="barFb2">7 alloc blocks</div></div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Protobuf: scan for 1 int</div>
+    <div class="bar-track"><div class="bar-fill proto" style="width:55%" id="barProto1">6 alloc blocks</div></div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">FlatBuffers: read 1 int</div>
+    <div class="bar-track"><div class="bar-fill fb" style="width:45%" id="barFb1">5 alloc blocks</div></div>
+  </div>
+</div>
+
+<h3>Timing Comparison (Python, ns/op)</h3>
+<div class="bar-chart">
+  <div class="bar-row">
+    <div class="bar-label">Protobuf: scan for 1 int</div>
+    <div class="bar-track"><div class="bar-fill proto" style="width:100%">~800 ns</div></div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">FlatBuffers: read 1 int</div>
+    <div class="bar-track"><div class="bar-fill fb" style="width:44%">~350 ns (2.3x faster)</div></div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">Protobuf: scan for 2 fields</div>
+    <div class="bar-track"><div class="bar-fill proto" style="width:95%">~1500 ns</div></div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">FlatBuffers: read 2 fields</div>
+    <div class="bar-track"><div class="bar-fill fb" style="width:41%">~650 ns (2.3x faster)</div></div>
+  </div>
+</div>
+
+<p style="color:#8b949e; font-size:12px; margin-top:12px;">
+In C++/Rust, the FlatBuffers advantage is 10-100x because field reads compile to single pointer dereferences.
+Python's struct.unpack overhead narrows the gap, but the architectural advantage is clear.
+</p>
+</div>
+
+<!-- Tooltip -->
+<div class="tooltip" id="tooltip">
+  <div class="label" id="tipLabel"></div>
+  <div class="detail" id="tipDetail"></div>
+</div>
+
+<script>
+// ──────────────────────────────────────────────────────────────
+// Buffer data: a simplified FoodDash Order encoded by our from-scratch builder
+// Matches the output of flatbuf_from_scratch.py
+// ──────────────────────────────────────────────────────────────
+
+const bufferHex = "18000000 14002f00 04000800 17001800 24001c00 0c001000 14000000 2b000000 37000000 43000000 4c000000 00000005 f4010000 01000000 00002000 00004000 fc54d941 00000008 0000006f 72643030 30343200 00000008 00000072 65737430 30303100 00000008 00000064 72697630 30303100 13000000 52696e67 20646f6f 7262656c 6c207477 69636500";
+
+const buffer = [];
+bufferHex.replace(/\s/g, '').match(/.{2}/g).forEach(h => buffer.push(parseInt(h, 16)));
+
+// Region annotations for each byte
+// vtable: bytes 4-23 (20 bytes), root offset: 0-3, table data: 24-67, strings: 68+
+const regions = [];
+const annotations = [];
+
+// Root offset (bytes 0-3)
+for (let i = 0; i < 4; i++) {
+  regions[i] = 'root';
+  annotations[i] = { label: 'Root offset', detail: `uint32 = ${buffer[0] | (buffer[1]<<8) | (buffer[2]<<16) | (buffer[3]<<24)} — points to the Order table at byte 24` };
+}
+
+// vtable (bytes 4-23, 20 bytes)
+const vtableStart = 4;
+const vtSize = buffer[vtableStart] | (buffer[vtableStart+1] << 8); // 20
+const tblSize = buffer[vtableStart+2] | (buffer[vtableStart+3] << 8);
+
+regions[4] = 'vtable'; annotations[4] = { label: 'vtable size (low byte)', detail: `uint16 = ${vtSize} bytes — total vtable size` };
+regions[5] = 'vtable'; annotations[5] = { label: 'vtable size (high byte)', detail: `uint16 = ${vtSize} bytes` };
+regions[6] = 'vtable'; annotations[6] = { label: 'table data size (low)', detail: `uint16 = ${tblSize} bytes — size of the table data region` };
+regions[7] = 'vtable'; annotations[7] = { label: 'table data size (high)', detail: `uint16 = ${tblSize} bytes` };
+
+const fieldNames = ['id', 'restaurant_id', 'status', 'tip_cents', 'created_at', 'platform_txn_id', 'driver_id', 'delivery_notes'];
+const fieldTypes = ['string', 'string', 'byte', 'int32', 'float64', 'int64', 'string', 'string'];
+
+for (let f = 0; f < 8; f++) {
+  const pos = vtableStart + 4 + f * 2;
+  const off = buffer[pos] | (buffer[pos+1] << 8);
+  regions[pos] = 'vtable';
+  regions[pos+1] = 'vtable';
+  const desc = off === 0 ? 'ABSENT (default)' : `offset ${off} within table -> byte ${24 + off}`;
+  annotations[pos] = { label: `vtable[${f}]: ${fieldNames[f]} (low)`, detail: `uint16 = ${off} — ${desc}` };
+  annotations[pos+1] = { label: `vtable[${f}]: ${fieldNames[f]} (high)`, detail: `uint16 = ${off}` };
+}
+
+// Table data region: bytes 24 to ~67
+const tableStart = 24;
+// soffset32 at bytes 24-27
+for (let i = 24; i < 28; i++) {
+  regions[i] = 'table';
+  annotations[i] = { label: 'soffset32 (table -> vtable)', detail: 'int32 = 20 — vtable is at byte 24-20 = byte 4' };
+}
+
+// Field data in the table (offsets from vtable entries)
+// Offset fields (uint32 relative offsets to strings):
+const offsetFields = [
+  { idx: 0, name: 'id', off: 4 },
+  { idx: 1, name: 'restaurant_id', off: 8 },
+  { idx: 6, name: 'driver_id', off: 12 },
+  { idx: 7, name: 'delivery_notes', off: 16 },
+];
+
+for (const f of offsetFields) {
+  const bytePos = tableStart + f.off;
+  for (let i = 0; i < 4; i++) {
+    regions[bytePos + i] = 'table';
+    annotations[bytePos + i] = { label: `${f.name} offset (byte ${i})`, detail: `uint32 relative offset — points to the ${f.name} string` };
+  }
+}
+
+// status byte at offset 23 from table (byte 47)
+regions[47] = 'table';
+annotations[47] = { label: 'status (byte)', detail: 'byte = 5 — EnRoute' };
+
+// tip_cents int32 at offset 24 from table (bytes 48-51)
+for (let i = 0; i < 4; i++) {
+  regions[48 + i] = 'table';
+  annotations[48 + i] = { label: `tip_cents (byte ${i})`, detail: 'int32 = 500 (little-endian: f4 01 00 00)' };
+}
+
+// platform_txn_id int64 at offset 28 from table (bytes 52-59)
+for (let i = 0; i < 8; i++) {
+  regions[52 + i] = 'table';
+  annotations[52 + i] = { label: `platform_txn_id (byte ${i})`, detail: 'int64 = 9007199254740993 (2^53+1)' };
+}
+
+// created_at float64 at offset 36 from table (bytes 60-67)
+for (let i = 0; i < 8; i++) {
+  regions[60 + i] = 'table';
+  annotations[60 + i] = { label: `created_at (byte ${i})`, detail: 'float64 = 1700000000.0 (Unix timestamp)' };
+}
+
+// Strings: starting at byte 68
+const strings = [
+  { start: 68, text: 'ord00042', name: 'id string' },
+  { start: 80, text: 'rest0001', name: 'restaurant_id string' },
+  { start: 92, text: 'driv0001', name: 'driver_id string' },
+  { start: 104, text: 'Ring doorbell twice', name: 'delivery_notes string' },
+];
+
+for (const s of strings) {
+  // 3 padding bytes before length? Let's mark them
+  // Actually from the hex: each string has format [padding?] [uint32 len] [bytes] [null]
+  // Let me parse from the actual buffer
+  const lenPos = s.start;
+  // Check if there are padding bytes
+  if (s.start > 68) {
+    // Mark padding bytes between strings
+    for (let p = strings[strings.indexOf(s) - 1].start + 4 + strings[strings.indexOf(s) - 1].text.length + 1; p < s.start; p++) {
+      if (p < buffer.length && !regions[p]) {
+        regions[p] = 'padding';
+        annotations[p] = { label: 'Alignment padding', detail: 'Padding to 4-byte boundary' };
+      }
+    }
+  }
+
+  // Length prefix (4 bytes)
+  for (let i = 0; i < 4; i++) {
+    if (lenPos + i < buffer.length) {
+      regions[lenPos + i] = 'string';
+      annotations[lenPos + i] = { label: `${s.name} length (byte ${i})`, detail: `uint32 = ${s.text.length} — byte length of "${s.text}"` };
+    }
+  }
+  // String bytes
+  for (let i = 0; i < s.text.length; i++) {
+    const pos = lenPos + 4 + i;
+    if (pos < buffer.length) {
+      regions[pos] = 'string';
+      annotations[pos] = { label: `${s.name} char '${s.text[i]}'`, detail: `byte ${i} of "${s.text}" (0x${buffer[pos].toString(16).padStart(2,'0')})` };
+    }
+  }
+  // Null terminator
+  const nullPos = lenPos + 4 + s.text.length;
+  if (nullPos < buffer.length) {
+    regions[nullPos] = 'string';
+    annotations[nullPos] = { label: `${s.name} null terminator`, detail: '0x00 — C-style string termination' };
+  }
+}
+
+// Fill remaining as padding
+for (let i = 0; i < buffer.length; i++) {
+  if (!regions[i]) {
+    regions[i] = 'padding';
+    annotations[i] = annotations[i] || { label: 'Padding / alignment', detail: 'Alignment padding byte' };
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+// Render buffer visualization
+// ──────────────────────────────────────────────────────────────
+
+const bufViz = document.getElementById('bufferViz');
+const tooltip = document.getElementById('tooltip');
+const tipLabel = document.getElementById('tipLabel');
+const tipDetail = document.getElementById('tipDetail');
+
+for (let i = 0; i < buffer.length; i++) {
+  const cell = document.createElement('div');
+  cell.className = `byte-cell region-${regions[i]}`;
+  cell.textContent = buffer[i].toString(16).padStart(2, '0');
+  cell.dataset.index = i;
+
+  cell.addEventListener('mouseenter', (e) => {
+    const ann = annotations[i] || { label: `Byte ${i}`, detail: '' };
+    tipLabel.textContent = `Byte ${i} (0x${i.toString(16).padStart(2,'0')}): ${ann.label}`;
+    tipDetail.textContent = ann.detail;
+    tooltip.style.display = 'block';
+    const rect = cell.getBoundingClientRect();
+    tooltip.style.left = Math.min(rect.left, window.innerWidth - 360) + 'px';
+    tooltip.style.top = (rect.bottom + 8) + 'px';
+  });
+
+  cell.addEventListener('mouseleave', () => {
+    tooltip.style.display = 'none';
+  });
+
+  bufViz.appendChild(cell);
+}
+
+// ──────────────────────────────────────────────────────────────
+// Field read animation
+// ──────────────────────────────────────────────────────────────
+
+// For each field, define the byte ranges that are read
+const fieldReadPaths = {
+  'id': {
+    steps: [
+      { bytes: [0,1,2,3], label: 'Step 1: Read root offset (uint32 at byte 0) = 24' },
+      { bytes: [24,25,26,27], label: 'Step 2: Read soffset32 at table (byte 24) = 20, vtable at byte 4' },
+      { bytes: [8,9], label: 'Step 3: vtable[0] = offset 4 within table -> byte 28' },
+      { bytes: [28,29,30,31], label: 'Step 4: Read relative offset at byte 28 -> string at byte 71' },
+      { bytes: [68,69,70,71,72,73,74,75,76,77,78,79], label: 'Step 5: Read string "ord00042" (length + bytes)' },
+    ]
+  },
+  'restaurant_id': {
+    steps: [
+      { bytes: [0,1,2,3], label: 'Step 1: Read root offset = 24' },
+      { bytes: [24,25,26,27], label: 'Step 2: soffset32 = 20, vtable at byte 4' },
+      { bytes: [10,11], label: 'Step 3: vtable[1] = offset 8 -> byte 32' },
+      { bytes: [32,33,34,35], label: 'Step 4: Read relative offset at byte 32 -> string' },
+      { bytes: [80,81,82,83,84,85,86,87,88,89,90,91], label: 'Step 5: Read string "rest0001"' },
+    ]
+  },
+  'status': {
+    steps: [
+      { bytes: [0,1,2,3], label: 'Step 1: Read root offset = 24' },
+      { bytes: [24,25,26,27], label: 'Step 2: soffset32 = 20, vtable at byte 4' },
+      { bytes: [12,13], label: 'Step 3: vtable[2] = offset 23 -> byte 47' },
+      { bytes: [47], label: 'Step 4: Read byte = 5 (EnRoute). DONE. Total: 11 bytes read.' },
+    ]
+  },
+  'tip_cents': {
+    steps: [
+      { bytes: [0,1,2,3], label: 'Step 1: Read root offset = 24' },
+      { bytes: [24,25,26,27], label: 'Step 2: soffset32 = 20, vtable at byte 4' },
+      { bytes: [14,15], label: 'Step 3: vtable[3] = offset 24 -> byte 48' },
+      { bytes: [48,49,50,51], label: 'Step 4: Read int32 = 500. DONE. Total: 14 bytes read.' },
+    ]
+  },
+  'created_at': {
+    steps: [
+      { bytes: [0,1,2,3], label: 'Step 1: Read root offset = 24' },
+      { bytes: [24,25,26,27], label: 'Step 2: soffset32 = 20, vtable at byte 4' },
+      { bytes: [16,17], label: 'Step 3: vtable[4] = offset 36 -> byte 60' },
+      { bytes: [60,61,62,63,64,65,66,67], label: 'Step 4: Read float64 = 1700000000.0. Total: 18 bytes read.' },
+    ]
+  },
+  'platform_txn_id': {
+    steps: [
+      { bytes: [0,1,2,3], label: 'Step 1: Read root offset = 24' },
+      { bytes: [24,25,26,27], label: 'Step 2: soffset32 = 20, vtable at byte 4' },
+      { bytes: [18,19], label: 'Step 3: vtable[5] = offset 28 -> byte 52' },
+      { bytes: [52,53,54,55,56,57,58,59], label: 'Step 4: Read int64 = 9007199254740993. Total: 18 bytes.' },
+    ]
+  },
+  'driver_id': {
+    steps: [
+      { bytes: [0,1,2,3], label: 'Step 1: Read root offset = 24' },
+      { bytes: [24,25,26,27], label: 'Step 2: soffset32 = 20, vtable at byte 4' },
+      { bytes: [20,21], label: 'Step 3: vtable[6] = offset 12 -> byte 36' },
+      { bytes: [36,37,38,39], label: 'Step 4: Read relative offset -> string' },
+      { bytes: [92,93,94,95,96,97,98,99,100,101,102,103], label: 'Step 5: Read "driv0001"' },
+    ]
+  },
+  'delivery_notes': {
+    steps: [
+      { bytes: [0,1,2,3], label: 'Step 1: Read root offset = 24' },
+      { bytes: [24,25,26,27], label: 'Step 2: soffset32 = 20, vtable at byte 4' },
+      { bytes: [22,23], label: 'Step 3: vtable[7] = offset 16 -> byte 40' },
+      { bytes: [40,41,42,43], label: 'Step 4: Read relative offset -> string' },
+      { bytes: [104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127], label: 'Step 5: Read "Ring doorbell twice"' },
+    ]
+  },
+};
+
+// Render field buttons
+const fieldListEl = document.getElementById('fieldList');
+const stepIndicator = document.getElementById('stepIndicator');
+
+fieldNames.forEach((name, idx) => {
+  const btn = document.createElement('div');
+  btn.className = 'field-item';
+  btn.textContent = `${name} (${fieldTypes[idx]})`;
+  btn.addEventListener('click', () => animateFieldRead(name));
+  fieldListEl.appendChild(btn);
+});
+
+let animationTimer = null;
+
+function animateFieldRead(fieldName) {
+  // Clear previous
+  if (animationTimer) clearTimeout(animationTimer);
+  document.querySelectorAll('.byte-cell').forEach(c => {
+    c.classList.remove('highlight', 'reading', 'dim');
+  });
+  document.querySelectorAll('.field-item').forEach(f => f.classList.remove('active'));
+
+  // Dim all bytes
+  document.querySelectorAll('.byte-cell').forEach(c => c.classList.add('dim'));
+
+  const path = fieldReadPaths[fieldName];
+  if (!path) return;
+
+  // Find and activate the button
+  document.querySelectorAll('.field-item').forEach(f => {
+    if (f.textContent.startsWith(fieldName)) f.classList.add('active');
+  });
+
+  let stepIdx = 0;
+  function showStep() {
+    if (stepIdx >= path.steps.length) {
+      stepIndicator.innerHTML = `<span class="step-num">Done!</span> Read ${fieldName} by touching only ${path.steps.reduce((s,st) => s + st.bytes.length, 0)} bytes out of ${buffer.length}`;
+      return;
+    }
+
+    const step = path.steps[stepIdx];
+    stepIndicator.innerHTML = `<span class="step-num">${step.label}</span>`;
+
+    step.bytes.forEach(b => {
+      const cell = bufViz.children[b];
+      if (cell) {
+        cell.classList.remove('dim');
+        cell.classList.add('highlight', 'reading');
+      }
+    });
+
+    stepIdx++;
+    animationTimer = setTimeout(showStep, 1200);
+  }
+
+  showStep();
+}
+
+// ──────────────────────────────────────────────────────────────
+// Zero-copy comparison: bytes touched
+// ──────────────────────────────────────────────────────────────
+
+const protoMini = document.getElementById('protoMini');
+const fbMini = document.getElementById('fbMini');
+
+function renderMiniBuffers(protoTouched, fbTouched) {
+  protoMini.innerHTML = '';
+  fbMini.innerHTML = '';
+
+  for (let i = 0; i < buffer.length; i++) {
+    const p = document.createElement('div');
+    p.className = 'mini-byte ' + (protoTouched.has(i) ? 'touched' : 'untouched');
+    protoMini.appendChild(p);
+
+    const f = document.createElement('div');
+    f.className = 'mini-byte ' + (fbTouched.has(i) ? 'touched-fb' : 'untouched');
+    fbMini.appendChild(f);
+  }
+}
+
+function showComparison(numFields) {
+  document.querySelectorAll('#cmp2,#cmp8').forEach(b => b.classList.remove('active'));
+  document.getElementById(numFields === 2 ? 'cmp2' : 'cmp8').classList.add('active');
+
+  // Protobuf: must scan entire buffer regardless
+  const protoTouched = new Set();
+  for (let i = 0; i < buffer.length; i++) protoTouched.add(i);
+
+  // FlatBuffers: only bytes needed for the fields
+  const fbTouched = new Set();
+  // Always read root offset
+  [0,1,2,3].forEach(b => fbTouched.add(b));
+  // Always read soffset32
+  [24,25,26,27].forEach(b => fbTouched.add(b));
+
+  const fieldsToRead = numFields === 2
+    ? ['restaurant_id', 'tip_cents']
+    : fieldNames;
+
+  fieldsToRead.forEach(name => {
+    const path = fieldReadPaths[name];
+    if (path) {
+      path.steps.forEach(step => {
+        step.bytes.forEach(b => fbTouched.add(b));
+      });
+    }
+  });
+
+  renderMiniBuffers(protoTouched, fbTouched);
+
+  const protoCount = protoTouched.size;
+  const fbCount = fbTouched.size;
+  document.getElementById('protoByteCount').textContent =
+    `${protoCount} / ${buffer.length} bytes read (${Math.round(protoCount/buffer.length*100)}%)`;
+  document.getElementById('fbByteCount').textContent =
+    `~${fbCount} / ${buffer.length} bytes read (${Math.round(fbCount/buffer.length*100)}%)`;
+}
+
+// Initial state
+showComparison(2);
+
+</script>
+</body>
+</html>

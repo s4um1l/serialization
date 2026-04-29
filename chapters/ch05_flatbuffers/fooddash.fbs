@@ -1,0 +1,73 @@
+// FoodDash Wire FlatBuffers schema — Chapter 05
+// This schema is for reference only; we build FlatBuffers by hand
+// to understand the binary layout from scratch.
+
+namespace FoodDash;
+
+enum OrderStatus : byte {
+  Placed = 0,
+  Confirmed = 1,
+  Preparing = 2,
+  Ready = 3,
+  PickedUp = 4,
+  EnRoute = 5,
+  Delivered = 6,
+  Cancelled = 7
+}
+
+enum PaymentMethod : byte {
+  CreditCard = 0,
+  DebitCard = 1,
+  Cash = 2,
+  Wallet = 3
+}
+
+table GeoPoint {
+  latitude: double;
+  longitude: double;
+}
+
+table MenuItem {
+  id: string;
+  name: string;
+  price_cents: int;
+  description: string;
+  category: string;
+  is_vegetarian: bool;
+  allergens: [string];
+  thumbnail_png: [ubyte];
+}
+
+table OrderItem {
+  menu_item: MenuItem;
+  quantity: int = 1;
+  special_instructions: string;
+}
+
+table Customer {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  location: GeoPoint;
+}
+
+table Order {
+  id: string;
+  platform_transaction_id: long;
+  customer: Customer;
+  restaurant_id: string;
+  items: [OrderItem];
+  status: OrderStatus = Placed;
+  payment_method: PaymentMethod = CreditCard;
+  driver_id: string;
+  delivery_notes: string;
+  promo_code: string;
+  tip_cents: int;
+  created_at: double;
+  updated_at: double;
+  estimated_delivery_minutes: int;
+}
+
+root_type Order;
