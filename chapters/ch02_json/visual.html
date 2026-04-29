@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 02 — JSON Anatomy | FoodDash Wire</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 24px;
+}
+h1 { font-size: 22px; color: #58a6ff; margin-bottom: 4px; }
+h2 { font-size: 17px; color: #79c0ff; margin: 28px 0 12px 0; }
+h3 { font-size: 14px; color: #d2a8ff; margin: 18px 0 8px 0; }
+.subtitle { color: #8b949e; font-size: 13px; margin-bottom: 24px; }
+.section {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+.json-display {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 16px;
+    overflow-x: auto;
+    white-space: pre;
+    font-size: 13px;
+    line-height: 1.5;
+    max-height: 400px;
+    overflow-y: auto;
+}
+.j-key { color: #ff7b72; }
+.j-str { color: #a5d6ff; }
+.j-num { color: #79c0ff; }
+.j-bool { color: #d2a8ff; }
+.j-null { color: #d2a8ff; }
+.j-brace { color: #e3b341; font-weight: bold; }
+.j-bracket { color: #e3b341; font-weight: bold; }
+.j-colon { color: #e3b341; }
+.j-comma { color: #e3b341; }
+.j-quote { color: #7ee787; }
+
+.hex-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    font-size: 11px;
+    line-height: 1;
+    max-height: 300px;
+    overflow-y: auto;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 12px;
+}
+.hex-byte {
+    width: 26px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 2px;
+    font-size: 10px;
+    cursor: default;
+}
+.hex-byte:hover { outline: 1px solid #58a6ff; }
+.hx-structural { background: #3d2e00; color: #e3b341; }
+.hx-quote { background: #0e3320; color: #7ee787; }
+.hx-fieldname { background: #3b1a00; color: #ffa657; }
+.hx-data { background: #0d1117; color: #c9d1d9; }
+.hx-whitespace { background: #0d1117; color: #484f58; }
+
+.legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin: 10px 0;
+    font-size: 12px;
+}
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+    display: inline-block;
+}
+
+.pie-container {
+    display: flex;
+    align-items: center;
+    gap: 32px;
+    flex-wrap: wrap;
+}
+canvas.pie { width: 220px; height: 220px; }
+
+.slider-container {
+    margin: 12px 0;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+.slider-container input[type="range"] {
+    width: 300px;
+    accent-color: #58a6ff;
+}
+.slider-value {
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    padding: 4px 12px;
+    min-width: 80px;
+    text-align: center;
+    color: #58a6ff;
+    font-weight: bold;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin: 12px 0;
+}
+.stat-card {
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 12px;
+    text-align: center;
+}
+.stat-value { font-size: 22px; font-weight: bold; color: #58a6ff; }
+.stat-label { font-size: 11px; color: #8b949e; margin-top: 4px; }
+
+.toggle-btn {
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 8px 16px;
+    color: #e6edf3;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    transition: all 0.2s;
+}
+.toggle-btn:hover { border-color: #58a6ff; }
+.toggle-btn.active { background: #1f6feb; border-color: #58a6ff; }
+
+.bar {
+    height: 24px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    font-size: 11px;
+    color: #0d1117;
+    font-weight: bold;
+    transition: width 0.4s ease;
+}
+.bar-container { margin: 8px 0; }
+.bar-label { font-size: 12px; color: #8b949e; margin-bottom: 2px; }
+</style>
+</head>
+<body>
+
+<h1>Chapter 02 -- JSON Anatomy</h1>
+<p class="subtitle">FoodDash Wire: visualizing what JSON actually puts on the wire</p>
+
+<!-- SECTION 1: Pretty-printed JSON -->
+<div class="section">
+    <h2>A FoodDash Order as JSON</h2>
+    <div class="json-display" id="json-pretty"></div>
+</div>
+
+<!-- SECTION 2: Hex dump -->
+<div class="section">
+    <h2>JSON Anatomy: Hex Dump</h2>
+    <p style="color:#8b949e; margin-bottom:10px; font-size:12px;">Every byte of the compact JSON, color-coded by role. Hover for details.</p>
+    <div class="legend">
+        <div class="legend-item"><span class="legend-swatch" style="background:#3d2e00;"></span> Structural <code>{}[]:,</code></div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#0e3320;"></span> Quotes <code>"</code></div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#3b1a00;"></span> Field names</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#1a2332;"></span> Data values</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#0d1117;border:1px solid #30363d;"></span> Whitespace</div>
+    </div>
+    <div class="hex-grid" id="hex-dump"></div>
+</div>
+
+<!-- SECTION 3: Overhead analysis -->
+<div class="section">
+    <h2>Overhead Analysis</h2>
+
+    <h3>Byte Composition</h3>
+    <div class="pie-container">
+        <canvas class="pie" id="pie-chart" width="440" height="440"></canvas>
+        <div id="pie-legend" style="font-size: 13px;"></div>
+    </div>
+
+    <h3>Repeated Keys: Watch the Overhead Grow</h3>
+    <p style="color:#8b949e; font-size:12px; margin-bottom:8px;">Same order repeated N times in a JSON array. Field names are duplicated in every copy.</p>
+    <div class="slider-container">
+        <label>Orders:</label>
+        <input type="range" id="order-slider" min="0" max="3" step="1" value="0">
+        <div class="slider-value" id="order-count">1</div>
+    </div>
+    <div class="stats-grid" id="repeat-stats"></div>
+    <div id="repeat-bars"></div>
+
+    <h3>Base64 Binary Overhead</h3>
+    <p style="color:#8b949e; font-size:12px; margin-bottom:8px;">Toggle binary data (thumbnail images) to see the base64 inflation.</p>
+    <div style="margin: 10px 0;">
+        <button class="toggle-btn active" id="b64-toggle">Binary data: ON</button>
+    </div>
+    <div class="stats-grid" id="b64-stats"></div>
+    <div id="b64-bars"></div>
+</div>
+
+<script>
+// --- Sample FoodDash Order ---
+const ORDER = {
+    "id": "ord00002",
+    "platform_transaction_id": 123456789,
+    "customer": {
+        "id": "cust0001",
+        "name": "Alice Nakamura",
+        "email": "alice@example.com",
+        "phone": "+1-555-0101",
+        "address": "350 5th Ave, New York, NY 10118",
+        "location": { "latitude": 40.748817, "longitude": -73.985428 }
+    },
+    "restaurant_id": "rest0001",
+    "items": [
+        {
+            "menu_item": {
+                "id": "menu0001",
+                "name": "Classic Smash Burger",
+                "price_cents": 1299,
+                "description": "Two 4oz patties, American cheese, pickles, onion, secret sauce",
+                "category": "main",
+                "is_vegetarian": false,
+                "allergens": ["gluten", "dairy"],
+                "thumbnail_png": "$base64:iVBORw0KGgoAAAAAAAAA"
+            },
+            "quantity": 2,
+            "special_instructions": "No pickles on one"
+        },
+        {
+            "menu_item": {
+                "id": "menu0003",
+                "name": "Truffle Fries",
+                "price_cents": 899,
+                "description": "Hand-cut fries, truffle oil, parmesan, fresh herbs",
+                "category": "appetizer",
+                "is_vegetarian": true,
+                "allergens": ["dairy"],
+                "thumbnail_png": ""
+            },
+            "quantity": 1,
+            "special_instructions": ""
+        },
+        {
+            "menu_item": {
+                "id": "menu0004",
+                "name": "Matcha Milkshake",
+                "price_cents": 799,
+                "description": "Organic matcha, vanilla ice cream, oat milk",
+                "category": "drink",
+                "is_vegetarian": true,
+                "allergens": ["dairy"],
+                "thumbnail_png": ""
+            },
+            "quantity": 2,
+            "special_instructions": ""
+        }
+    ],
+    "status": "en_route",
+    "payment_method": "credit_card",
+    "driver_id": "driv0001",
+    "delivery_notes": "Ring doorbell twice, leave at door",
+    "promo_code": "SAVE20",
+    "tip_cents": 500,
+    "created_at": 1700000000.0,
+    "updated_at": 1700000300.0,
+    "estimated_delivery_minutes": 25,
+    "metadata": {
+        "source": "mobile_app",
+        "app_version": "4.2.1",
+        "session_id": "sess_abc123"
+    }
+};
+
+const ORDER_NO_BINARY = JSON.parse(JSON.stringify(ORDER));
+function stripBinary(obj) {
+    if (Array.isArray(obj)) return obj.map(stripBinary);
+    if (obj && typeof obj === 'object') {
+        const out = {};
+        for (const [k,v] of Object.entries(obj)) {
+            if (k === 'thumbnail_png') out[k] = '';
+            else out[k] = stripBinary(v);
+        }
+        return out;
+    }
+    return obj;
+}
+const ORDER_STRIPPED = stripBinary(ORDER);
+
+// --- 1. Pretty-printed JSON with syntax highlighting ---
+function syntaxHighlight(json) {
+    json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return json.replace(
+        /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+        function (match) {
+            let cls = 'j-num';
+            if (/^"/.test(match)) {
+                if (/:$/.test(match)) {
+                    // Key
+                    const inner = match.slice(1, match.lastIndexOf('"'));
+                    return '<span class="j-quote">"</span><span class="j-key">' + inner + '</span><span class="j-quote">"</span><span class="j-colon">:</span>';
+                } else {
+                    const inner = match.slice(1, -1);
+                    return '<span class="j-quote">"</span><span class="j-str">' + inner + '</span><span class="j-quote">"</span>';
+                }
+            }
+            if (/true|false/.test(match)) cls = 'j-bool';
+            if (/null/.test(match)) cls = 'j-null';
+            return '<span class="' + cls + '">' + match + '</span>';
+        }
+    ).replace(/([{}])/g, '<span class="j-brace">$1</span>')
+     .replace(/([[|\]])/g, '<span class="j-bracket">$1</span>')
+     .replace(/(,)(?!\s*<)/g, '<span class="j-comma">$1</span>');
+}
+
+document.getElementById('json-pretty').innerHTML = syntaxHighlight(JSON.stringify(ORDER, null, 2));
+
+// --- 2. Hex dump ---
+function classifyJsonBytes(jsonStr) {
+    const result = [];
+    let inString = false;
+    let escapeNext = false;
+    let isFieldName = false;
+    let afterColon = false;
+
+    for (let i = 0; i < jsonStr.length; i++) {
+        const ch = jsonStr[i];
+        const code = jsonStr.charCodeAt(i);
+        let cls;
+
+        if (escapeNext) {
+            cls = isFieldName ? 'hx-fieldname' : 'hx-data';
+            escapeNext = false;
+            result.push({ ch, code, cls, pos: i });
+            continue;
+        }
+
+        if (inString) {
+            if (ch === '\\') {
+                escapeNext = true;
+                cls = isFieldName ? 'hx-fieldname' : 'hx-data';
+            } else if (ch === '"') {
+                cls = 'hx-quote';
+                inString = false;
+            } else {
+                cls = isFieldName ? 'hx-fieldname' : 'hx-data';
+            }
+        } else {
+            if (ch === '"') {
+                cls = 'hx-quote';
+                inString = true;
+                // Look ahead to see if this is a field name (followed eventually by :)
+                let j = i + 1;
+                let escaped = false;
+                while (j < jsonStr.length) {
+                    if (escaped) { escaped = false; j++; continue; }
+                    if (jsonStr[j] === '\\') { escaped = true; j++; continue; }
+                    if (jsonStr[j] === '"') break;
+                    j++;
+                }
+                // Check char after closing quote (skip whitespace)
+                j++;
+                while (j < jsonStr.length && ' \t\n\r'.includes(jsonStr[j])) j++;
+                isFieldName = (j < jsonStr.length && jsonStr[j] === ':');
+            } else if ('{}[]:,'.includes(ch)) {
+                cls = 'hx-structural';
+            } else if (' \t\n\r'.includes(ch)) {
+                cls = 'hx-whitespace';
+            } else {
+                cls = 'hx-data';
+            }
+        }
+
+        result.push({ ch, code, cls, pos: i });
+    }
+    return result;
+}
+
+const compactJson = JSON.stringify(ORDER);
+const classified = classifyJsonBytes(compactJson);
+const hexContainer = document.getElementById('hex-dump');
+
+// Only show first 500 bytes to keep it manageable, with a note
+const SHOW_BYTES = 600;
+const bytesToShow = classified.slice(0, SHOW_BYTES);
+bytesToShow.forEach(b => {
+    const el = document.createElement('span');
+    el.className = 'hex-byte ' + b.cls;
+    const hex = b.code.toString(16).padStart(2, '0').toUpperCase();
+    el.textContent = hex;
+    const printable = b.code >= 32 && b.code < 127 ? b.ch : '.';
+    el.title = `Position ${b.pos}: '${printable}' (0x${hex}) - ${b.cls.replace('hx-', '')}`;
+    hexContainer.appendChild(el);
+});
+if (classified.length > SHOW_BYTES) {
+    const more = document.createElement('div');
+    more.style.cssText = 'color:#8b949e; font-size:11px; margin-top:8px; width:100%;';
+    more.textContent = `... and ${classified.length - SHOW_BYTES} more bytes (${classified.length} total)`;
+    hexContainer.appendChild(more);
+}
+
+// --- 3a. Pie chart ---
+function countCategories(classified) {
+    const counts = { structural: 0, quotes: 0, fieldnames: 0, data: 0, whitespace: 0 };
+    classified.forEach(b => {
+        if (b.cls === 'hx-structural') counts.structural++;
+        else if (b.cls === 'hx-quote') counts.quotes++;
+        else if (b.cls === 'hx-fieldname') counts.fieldnames++;
+        else if (b.cls === 'hx-whitespace') counts.whitespace++;
+        else counts.data++;
+    });
+    return counts;
+}
+
+const counts = countCategories(classified);
+const total = classified.length;
+
+function drawPie(canvas, data) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const cx = w / 2, cy = h / 2, r = Math.min(w, h) / 2 - 20;
+
+    ctx.clearRect(0, 0, w, h);
+
+    const items = Object.entries(data);
+    const sum = items.reduce((s, [,v]) => s + v, 0);
+    const colors = {
+        structural: '#e3b341',
+        quotes: '#7ee787',
+        fieldnames: '#ffa657',
+        data: '#79c0ff',
+        whitespace: '#484f58'
+    };
+    const labels = {
+        structural: 'Structural {}[]:,',
+        quotes: 'Quote chars "',
+        fieldnames: 'Field names',
+        data: 'Data values',
+        whitespace: 'Whitespace'
+    };
+
+    let angle = -Math.PI / 2;
+    const slices = [];
+    items.forEach(([key, val]) => {
+        if (val === 0) return;
+        const sweep = (val / sum) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, angle, angle + sweep);
+        ctx.closePath();
+        ctx.fillStyle = colors[key] || '#888';
+        ctx.fill();
+        ctx.strokeStyle = '#0d1117';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        slices.push({ key, val, startAngle: angle, endAngle: angle + sweep });
+        angle += sweep;
+    });
+
+    // Legend
+    const legendEl = document.getElementById('pie-legend');
+    legendEl.innerHTML = '';
+    items.forEach(([key, val]) => {
+        if (val === 0) return;
+        const pct = (val / sum * 100).toFixed(1);
+        const div = document.createElement('div');
+        div.style.cssText = 'display:flex;align-items:center;gap:8px;margin:4px 0;';
+        div.innerHTML = `<span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:${colors[key]}"></span>
+            <span>${labels[key]}: <strong>${val}</strong> bytes (${pct}%)</span>`;
+        legendEl.appendChild(div);
+    });
+    const totalDiv = document.createElement('div');
+    totalDiv.style.cssText = 'margin-top:8px;color:#58a6ff;font-weight:bold;';
+    totalDiv.textContent = `Total: ${sum} bytes`;
+    legendEl.appendChild(totalDiv);
+}
+
+drawPie(document.getElementById('pie-chart'), counts);
+
+// --- 3b. Repeated keys slider ---
+const orderSlider = document.getElementById('order-slider');
+const orderCountEl = document.getElementById('order-count');
+const repeatStatsEl = document.getElementById('repeat-stats');
+const repeatBarsEl = document.getElementById('repeat-bars');
+
+const singleOrderJson = JSON.stringify(ORDER);
+const singleSize = singleOrderJson.length;
+const singleClassified = classifyJsonBytes(singleOrderJson);
+const singleCounts = countCategories(singleClassified);
+const singleFieldNameBytes = singleCounts.fieldnames;
+
+function updateRepeatStats() {
+    const steps = [1, 10, 100, 1000];
+    const n = steps[parseInt(orderSlider.value)];
+    orderCountEl.textContent = n.toLocaleString();
+
+    // For a JSON array of n copies: [order,order,...order]
+    // Size = 1 (open bracket) + n * singleSize + (n-1) * 1 (commas) + 1 (close bracket)
+    const arraySize = 2 + n * singleSize + Math.max(0, n - 1);
+    const totalFnBytes = singleFieldNameBytes * n;
+    const totalQuotes = singleCounts.quotes * n;
+    const totalStructural = singleCounts.structural * n + 2 + Math.max(0, n - 1); // array brackets + commas
+    const totalData = singleCounts.data * n;
+    const fnPct = (totalFnBytes / arraySize * 100).toFixed(1);
+    const overheadPct = ((totalFnBytes + totalQuotes + totalStructural) / arraySize * 100).toFixed(1);
+
+    repeatStatsEl.innerHTML = `
+        <div class="stat-card"><div class="stat-value">${arraySize.toLocaleString()}</div><div class="stat-label">Total bytes</div></div>
+        <div class="stat-card"><div class="stat-value">${totalFnBytes.toLocaleString()}</div><div class="stat-label">Field name bytes</div></div>
+        <div class="stat-card"><div class="stat-value">${fnPct}%</div><div class="stat-label">Field name overhead</div></div>
+        <div class="stat-card"><div class="stat-value">${overheadPct}%</div><div class="stat-label">Total syntax overhead</div></div>
+    `;
+
+    const maxBar = arraySize;
+    repeatBarsEl.innerHTML = `
+        <div class="bar-container">
+            <div class="bar-label">Field names</div>
+            <div class="bar" style="width:${totalFnBytes/maxBar*100}%; background:#ffa657;">${totalFnBytes.toLocaleString()} B</div>
+        </div>
+        <div class="bar-container">
+            <div class="bar-label">Data values</div>
+            <div class="bar" style="width:${totalData/maxBar*100}%; background:#79c0ff;">${totalData.toLocaleString()} B</div>
+        </div>
+        <div class="bar-container">
+            <div class="bar-label">Structural + Quotes</div>
+            <div class="bar" style="width:${(totalStructural+totalQuotes)/maxBar*100}%; background:#e3b341;">${(totalStructural+totalQuotes).toLocaleString()} B</div>
+        </div>
+    `;
+}
+orderSlider.addEventListener('input', updateRepeatStats);
+updateRepeatStats();
+
+// --- 3c. Base64 toggle ---
+const b64Toggle = document.getElementById('b64-toggle');
+const b64StatsEl = document.getElementById('b64-stats');
+const b64BarsEl = document.getElementById('b64-bars');
+let b64On = true;
+
+const withBinaryJson = JSON.stringify(ORDER);
+const withoutBinaryJson = JSON.stringify(ORDER_STRIPPED);
+const withSize = withBinaryJson.length;
+const withoutSize = withoutBinaryJson.length;
+const binaryPortion = withSize - withoutSize;
+
+function updateB64Stats() {
+    const currentSize = b64On ? withSize : withoutSize;
+    const overhead = b64On ? binaryPortion : 0;
+    const pct = b64On ? (binaryPortion / withSize * 100).toFixed(1) : '0.0';
+
+    b64StatsEl.innerHTML = `
+        <div class="stat-card"><div class="stat-value">${currentSize.toLocaleString()}</div><div class="stat-label">JSON size (bytes)</div></div>
+        <div class="stat-card"><div class="stat-value">${overhead.toLocaleString()}</div><div class="stat-label">Base64 overhead</div></div>
+        <div class="stat-card"><div class="stat-value">${pct}%</div><div class="stat-label">Binary data portion</div></div>
+    `;
+
+    const maxBar = withSize;
+    const dataBytes = b64On ? withoutSize : withoutSize;
+    const binBytes = b64On ? binaryPortion : 0;
+    b64BarsEl.innerHTML = `
+        <div class="bar-container">
+            <div class="bar-label">Data + structure</div>
+            <div class="bar" style="width:${dataBytes/maxBar*100}%; background:#79c0ff;">${dataBytes.toLocaleString()} B</div>
+        </div>
+        <div class="bar-container">
+            <div class="bar-label">Base64 binary</div>
+            <div class="bar" style="width:${binBytes/maxBar*100}%; background:#f97583; ${binBytes === 0 ? 'opacity:0.3;' : ''}">${binBytes.toLocaleString()} B</div>
+        </div>
+    `;
+}
+
+b64Toggle.addEventListener('click', () => {
+    b64On = !b64On;
+    b64Toggle.textContent = `Binary data: ${b64On ? 'ON' : 'OFF'}`;
+    b64Toggle.classList.toggle('active', b64On);
+    updateB64Stats();
+});
+updateB64Stats();
+</script>
+</body>
+</html>
