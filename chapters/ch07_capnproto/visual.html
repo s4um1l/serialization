@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 07: Cap'n Proto -- Wire Format = Memory Format</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0d1117; color: #c9d1d9; font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    line-height: 1.6; padding: 2rem; max-width: 1200px; margin: 0 auto;
+  }
+  h1 { color: #58a6ff; font-size: 1.6rem; margin-bottom: 0.5rem; }
+  h2 { color: #79c0ff; font-size: 1.2rem; margin: 2rem 0 1rem; border-bottom: 1px solid #21262d; padding-bottom: 0.5rem; }
+  h3 { color: #d2a8ff; font-size: 1rem; margin: 1.5rem 0 0.5rem; }
+  p, .desc { color: #8b949e; margin-bottom: 0.75rem; font-size: 0.9rem; }
+  .subtitle { color: #8b949e; font-size: 0.95rem; margin-bottom: 2rem; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; margin-bottom: 0; }
+  .tab {
+    padding: 0.5rem 1.2rem; background: #161b22; border: 1px solid #21262d;
+    border-bottom: none; border-radius: 6px 6px 0 0; cursor: pointer;
+    color: #8b949e; font-size: 0.85rem; transition: all 0.2s;
+  }
+  .tab:hover { color: #c9d1d9; background: #1c2129; }
+  .tab.active { background: #1c2129; color: #58a6ff; border-color: #30363d; }
+  .tab-content {
+    background: #1c2129; border: 1px solid #30363d; border-radius: 0 6px 6px 6px;
+    padding: 1.5rem; display: none; min-height: 400px;
+  }
+  .tab-content.active { display: block; }
+
+  /* Memory layout blocks */
+  .memory-row {
+    display: flex; gap: 2px; margin: 4px 0; align-items: stretch;
+  }
+  .mem-cell {
+    padding: 6px 8px; font-size: 0.75rem; border-radius: 3px; text-align: center;
+    min-width: 60px; transition: all 0.3s; position: relative; flex-shrink: 0;
+  }
+  .mem-cell:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.4); z-index: 10; }
+  .mem-cell .tooltip {
+    display: none; position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%);
+    background: #30363d; color: #e6edf3; padding: 6px 10px; border-radius: 4px;
+    font-size: 0.7rem; white-space: nowrap; z-index: 100; border: 1px solid #484f58;
+    pointer-events: none;
+  }
+  .mem-cell:hover .tooltip { display: block; }
+
+  .data-section { background: #1a3a2a; border: 1px solid #2ea04380; color: #7ee787; }
+  .ptr-section { background: #2a1a3a; border: 1px solid #a040e080; color: #d2a8ff; }
+  .text-data { background: #1a2a3a; border: 1px solid #388bfd80; color: #79c0ff; }
+  .header-cell { background: #3a2a1a; border: 1px solid #d29922; color: #e3b341; }
+  .padding-cell { background: #161b22; border: 1px solid #21262d; color: #484f58; }
+  .vtable-cell { background: #3a1a2a; border: 1px solid #f778ba80; color: #f778ba; }
+  .offset-cell { background: #2a2a1a; border: 1px solid #d2992280; color: #e3b341; }
+
+  /* Labels */
+  .row-label {
+    font-size: 0.7rem; color: #484f58; width: 80px; display: flex;
+    align-items: center; flex-shrink: 0; padding-right: 8px; text-align: right;
+  }
+
+  /* Pointer anatomy */
+  .pointer-vis {
+    display: flex; gap: 0; margin: 1rem 0; border-radius: 4px; overflow: hidden;
+  }
+  .bit-range {
+    padding: 10px 4px; font-size: 0.7rem; text-align: center; cursor: pointer;
+    transition: all 0.3s; position: relative; border-right: 1px solid #0d1117;
+  }
+  .bit-range:hover { filter: brightness(1.3); }
+  .bit-range .bit-label {
+    display: block; font-size: 0.65rem; opacity: 0.7; margin-top: 2px;
+  }
+  .bit-info {
+    background: #30363d; border: 1px solid #484f58; border-radius: 6px;
+    padding: 1rem; margin-top: 0.5rem; font-size: 0.85rem; min-height: 60px;
+    transition: all 0.3s;
+  }
+
+  /* Animation */
+  .anim-container { position: relative; height: 350px; margin: 1rem 0; }
+  .anim-entity {
+    position: absolute; padding: 8px 12px; border-radius: 6px; font-size: 0.8rem;
+    transition: all 0.8s ease-in-out; white-space: nowrap;
+  }
+  .client-box { background: #1a3a5a; border: 1px solid #58a6ff; color: #79c0ff; }
+  .server-box { background: #3a1a2a; border: 1px solid #f778ba; color: #f778ba; }
+  .msg-box {
+    background: #2a3a1a; border: 1px solid #7ee787; color: #7ee787;
+    font-size: 0.7rem; padding: 4px 8px;
+  }
+  .arrow-line {
+    position: absolute; height: 2px; background: #484f58;
+    transform-origin: left center; transition: all 0.5s;
+  }
+
+  /* Buttons */
+  .btn {
+    padding: 8px 16px; background: #21262d; border: 1px solid #30363d;
+    color: #c9d1d9; border-radius: 6px; cursor: pointer; font-size: 0.85rem;
+    font-family: inherit; transition: all 0.2s; margin: 4px;
+  }
+  .btn:hover { background: #30363d; border-color: #484f58; }
+  .btn.active { background: #1f6feb; border-color: #58a6ff; color: #fff; }
+
+  /* Format comparison */
+  .format-grid {
+    display: grid; grid-template-columns: 1fr; gap: 1.5rem; margin: 1rem 0;
+  }
+  @media (min-width: 800px) { .format-grid { grid-template-columns: 1fr 1fr; } }
+  .format-card {
+    background: #161b22; border: 1px solid #21262d; border-radius: 6px; padding: 1rem;
+  }
+  .format-card h4 { color: #58a6ff; font-size: 0.9rem; margin-bottom: 0.5rem; }
+
+  /* Timing bars */
+  .timing-bar-container { margin: 4px 0; display: flex; align-items: center; gap: 8px; }
+  .timing-label { font-size: 0.75rem; width: 100px; text-align: right; color: #8b949e; flex-shrink: 0; }
+  .timing-bar {
+    height: 20px; border-radius: 3px; transition: width 1s ease-out;
+    display: flex; align-items: center; padding-left: 6px; font-size: 0.7rem;
+  }
+  .timing-value { font-size: 0.75rem; color: #8b949e; margin-left: 8px; flex-shrink: 0; }
+
+  .legend { display: flex; gap: 1rem; margin: 1rem 0; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 4px; font-size: 0.75rem; }
+  .legend-swatch { width: 12px; height: 12px; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<h1>Chapter 07: Cap'n Proto</h1>
+<p class="subtitle">The wire format IS the memory format. Zero encode. Zero decode.</p>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(0)">Memory Layout</div>
+  <div class="tab" onclick="switchTab(1)">Pointer Anatomy</div>
+  <div class="tab" onclick="switchTab(2)">Promise Pipelining</div>
+  <div class="tab" onclick="switchTab(3)">Format Comparison</div>
+</div>
+
+<!-- TAB 0: Memory Layout -->
+<div class="tab-content active" id="tab0">
+  <h3>The Same Order in Four Formats</h3>
+  <p>A simplified order: id="ord00042", restaurant_id="rest0001", status=5 (EnRoute), tip_cents=500, created_at=1700000000.0, platform_txn_id=9007199254740993</p>
+
+  <div style="margin: 1rem 0;">
+    <button class="btn active" onclick="showFormat('python')">Python Objects</button>
+    <button class="btn" onclick="showFormat('protobuf')">Protobuf</button>
+    <button class="btn" onclick="showFormat('flatbuf')">FlatBuffers</button>
+    <button class="btn" onclick="showFormat('capnp')">Cap'n Proto</button>
+  </div>
+
+  <div id="fmt-python" class="format-display">
+    <h3>Python Objects -- Scattered Heap Allocations</h3>
+    <p>Each field is a separate Python object on the heap. The Order object holds references (pointers) to each field. Accessing any field requires following a pointer and loading a separate cache line.</p>
+    <div id="python-layout"></div>
+    <p style="margin-top:0.75rem;">Total: ~800+ bytes of heap allocations (PyObject headers + data + reference counts)</p>
+  </div>
+
+  <div id="fmt-protobuf" class="format-display" style="display:none;">
+    <h3>Protobuf -- Compact Tagged Fields</h3>
+    <p>Fields are packed sequentially with tag+type prefixes. Integers use varint encoding (small values = fewer bytes). Must parse ALL fields sequentially to find any one field.</p>
+    <div id="protobuf-layout"></div>
+    <p style="margin-top:0.75rem;">Total: ~65 bytes. Compact, but requires full parse to read any field.</p>
+  </div>
+
+  <div id="fmt-flatbuf" class="format-display" style="display:none;">
+    <h3>FlatBuffers -- VTable + Data (Back-to-Front)</h3>
+    <p>Root offset points to table. Table starts with soffset to vtable. VTable maps field slots to byte offsets. Strings stored separately with length prefix.</p>
+    <div id="flatbuf-layout"></div>
+    <p style="margin-top:0.75rem;">Total: ~120 bytes. Zero-copy read, but vtable indirection for each field access.</p>
+  </div>
+
+  <div id="fmt-capnp" class="format-display" style="display:none;">
+    <h3>Cap'n Proto -- Word-Aligned Data + Pointers (Front-to-Back)</h3>
+    <p>Segment table, then root pointer, then struct (data section + pointer section), then text content. Everything word-aligned. No vtable needed -- field positions are fixed by schema.</p>
+    <div id="capnp-layout"></div>
+    <p style="margin-top:0.75rem;">Total: ~104 bytes. Zero-copy read AND write. No indirection -- field offset is computed directly.</p>
+  </div>
+</div>
+
+<!-- TAB 1: Pointer Anatomy -->
+<div class="tab-content" id="tab1">
+  <h3>64-Bit Pointer Anatomy</h3>
+  <p>Every Cap'n Proto pointer packs type, offset, and size information into a single 8-byte word. Hover over each bit range to see what it encodes.</p>
+
+  <div style="margin: 1rem 0;">
+    <button class="btn active" onclick="showPointer('struct')">Struct Pointer</button>
+    <button class="btn" onclick="showPointer('list')">List Pointer</button>
+  </div>
+
+  <div id="pointer-struct">
+    <div class="pointer-vis" id="struct-ptr-vis"></div>
+    <div class="bit-info" id="struct-ptr-info">Hover over a bit range to see its meaning.</div>
+    <div style="margin-top: 1rem;">
+      <p><strong>Example:</strong> Struct pointer to Order at offset=0 words, data=4 words, ptrs=3 words</p>
+      <p style="font-family: monospace; color: #7ee787; margin-top: 0.5rem;">
+        0x 0003 0004 0000 0000
+      </p>
+      <p>Bits 0-1: type=0 (struct) | Bits 2-31: offset=0 | Bits 32-47: data=4 | Bits 48-63: ptrs=3</p>
+    </div>
+  </div>
+
+  <div id="pointer-list" style="display:none;">
+    <div class="pointer-vis" id="list-ptr-vis"></div>
+    <div class="bit-info" id="list-ptr-info">Hover over a bit range to see its meaning.</div>
+    <div style="margin-top: 1rem;">
+      <p><strong>Example:</strong> List pointer for text "ord00042\0" (9 bytes) at offset=3 words</p>
+      <p style="font-family: monospace; color: #79c0ff; margin-top: 0.5rem;">
+        0x 0000 0049 0000 000d
+      </p>
+      <p>Bits 0-1: type=1 (list) | Bits 2-31: offset=3 | Bits 32-34: elem_size=2 (byte) | Bits 35-63: count=9</p>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: Promise Pipelining -->
+<div class="tab-content" id="tab2">
+  <h3>Promise Pipelining: 2 RTTs vs 1 RTT</h3>
+  <p>FoodDash needs to: 1) Get order (find driver_id), 2) Get driver location. Step 2 depends on step 1.</p>
+
+  <div style="margin: 1rem 0;">
+    <button class="btn" id="btn-play" onclick="startAnimation()">Play Animation</button>
+    <button class="btn" onclick="resetAnimation()">Reset</button>
+    <label style="margin-left: 1rem; font-size: 0.8rem; color: #8b949e;">
+      RTT: <select id="rtt-select" style="background: #21262d; color: #c9d1d9; border: 1px solid #30363d; padding: 2px 6px; border-radius: 4px; font-family: inherit;">
+        <option value="1">1ms (same DC)</option>
+        <option value="5">5ms (cross-AZ)</option>
+        <option value="50" selected>50ms (cross-region)</option>
+        <option value="150">150ms (cross-continent)</option>
+      </select>
+    </label>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+    <!-- Traditional -->
+    <div style="background: #161b22; border: 1px solid #21262d; border-radius: 6px; padding: 1rem;">
+      <h4 style="color: #f778ba; margin-bottom: 0.5rem;">Traditional RPC (2 Round Trips)</h4>
+      <div class="anim-container" id="trad-anim">
+        <div style="position:absolute;left:20px;top:0;bottom:0;width:2px;background:#30363d;"></div>
+        <div style="position:absolute;right:20px;top:0;bottom:0;width:2px;background:#30363d;"></div>
+        <div style="position:absolute;left:4px;top:-20px;font-size:0.7rem;color:#79c0ff;">Client</div>
+        <div style="position:absolute;right:4px;top:-20px;font-size:0.7rem;color:#f778ba;">Server</div>
+        <div class="trad-step" id="trad-s1" style="display:none;">
+          <svg style="position:absolute;top:20px;left:22px;width:calc(100% - 44px);height:30px;">
+            <line x1="0" y1="5" x2="100%" y2="25" stroke="#7ee787" stroke-width="2" stroke-dasharray="4"/>
+            <text x="50%" y="12" fill="#7ee787" font-size="10" text-anchor="middle">getOrder("ord00042")</text>
+          </svg>
+        </div>
+        <div class="trad-step" id="trad-s2" style="display:none;">
+          <svg style="position:absolute;top:60px;left:22px;width:calc(100% - 44px);height:30px;">
+            <line x1="100%" y1="5" x2="0" y2="25" stroke="#e3b341" stroke-width="2" stroke-dasharray="4"/>
+            <text x="50%" y="12" fill="#e3b341" font-size="10" text-anchor="middle">{driver_id: "driv0001"}</text>
+          </svg>
+        </div>
+        <div class="trad-step" id="trad-s3" style="display:none;">
+          <svg style="position:absolute;top:120px;left:22px;width:calc(100% - 44px);height:30px;">
+            <line x1="0" y1="5" x2="100%" y2="25" stroke="#7ee787" stroke-width="2" stroke-dasharray="4"/>
+            <text x="50%" y="12" fill="#7ee787" font-size="10" text-anchor="middle">getDriverLocation("driv0001")</text>
+          </svg>
+        </div>
+        <div class="trad-step" id="trad-s4" style="display:none;">
+          <svg style="position:absolute;top:160px;left:22px;width:calc(100% - 44px);height:30px;">
+            <line x1="100%" y1="5" x2="0" y2="25" stroke="#e3b341" stroke-width="2" stroke-dasharray="4"/>
+            <text x="50%" y="12" fill="#e3b341" font-size="10" text-anchor="middle">{lat: 40.752, lng: -73.978}</text>
+          </svg>
+        </div>
+        <div class="trad-step" id="trad-s5" style="display:none;">
+          <div style="position:absolute;top:210px;left:0;right:0;text-align:center;">
+            <span style="background:#f778ba20;border:1px solid #f778ba;padding:4px 12px;border-radius:4px;font-size:0.8rem;color:#f778ba;" id="trad-total">Total: 2 x 50ms = 100ms</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pipelined -->
+    <div style="background: #161b22; border: 1px solid #21262d; border-radius: 6px; padding: 1rem;">
+      <h4 style="color: #7ee787; margin-bottom: 0.5rem;">Cap'n Proto RPC (1 Round Trip)</h4>
+      <div class="anim-container" id="pipe-anim">
+        <div style="position:absolute;left:20px;top:0;bottom:0;width:2px;background:#30363d;"></div>
+        <div style="position:absolute;right:20px;top:0;bottom:0;width:2px;background:#30363d;"></div>
+        <div style="position:absolute;left:4px;top:-20px;font-size:0.7rem;color:#79c0ff;">Client</div>
+        <div style="position:absolute;right:4px;top:-20px;font-size:0.7rem;color:#f778ba;">Server</div>
+        <div class="pipe-step" id="pipe-s1" style="display:none;">
+          <svg style="position:absolute;top:20px;left:22px;width:calc(100% - 44px);height:50px;">
+            <line x1="0" y1="5" x2="100%" y2="45" stroke="#7ee787" stroke-width="2" stroke-dasharray="4"/>
+            <text x="50%" y="15" fill="#7ee787" font-size="9" text-anchor="middle">getOrder("ord00042")</text>
+            <text x="50%" y="30" fill="#7ee787" font-size="9" text-anchor="middle">.then(o => getDriverLoc(o.driverId))</text>
+          </svg>
+        </div>
+        <div class="pipe-step" id="pipe-s2" style="display:none;">
+          <svg style="position:absolute;top:80px;left:22px;width:calc(100% - 44px);height:40px;">
+            <rect x="65%" y="5" width="33%" height="25" rx="3" fill="#3a1a2a" stroke="#f778ba" stroke-width="1"/>
+            <text x="82%" y="22" fill="#f778ba" font-size="8" text-anchor="middle">resolve chain</text>
+          </svg>
+        </div>
+        <div class="pipe-step" id="pipe-s3" style="display:none;">
+          <svg style="position:absolute;top:120px;left:22px;width:calc(100% - 44px);height:40px;">
+            <line x1="100%" y1="5" x2="0" y2="35" stroke="#e3b341" stroke-width="2" stroke-dasharray="4"/>
+            <text x="50%" y="15" fill="#e3b341" font-size="10" text-anchor="middle">{lat: 40.752, lng: -73.978}</text>
+          </svg>
+        </div>
+        <div class="pipe-step" id="pipe-s4" style="display:none;">
+          <div style="position:absolute;top:180px;left:0;right:0;text-align:center;">
+            <span style="background:#7ee78720;border:1px solid #7ee787;padding:4px 12px;border-radius:4px;font-size:0.8rem;color:#7ee787;" id="pipe-total">Total: 1 x 50ms = 50ms</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top: 1rem;">
+    <h3>Latency Savings by Chain Depth</h3>
+    <div id="latency-bars"></div>
+  </div>
+</div>
+
+<!-- TAB 3: Format Comparison -->
+<div class="tab-content" id="tab3">
+  <h3>Serialization Speed vs Wire Size Trade-off</h3>
+  <p>Each format makes a different trade-off between wire size and encode/decode speed.</p>
+
+  <div style="margin: 1.5rem 0;">
+    <h4 style="color: #7ee787; margin-bottom: 0.5rem;">Encode Time (lower is better)</h4>
+    <div class="timing-bar-container">
+      <span class="timing-label">JSON</span>
+      <div class="timing-bar" style="width: 80%; background: #e3b341;">~15 us</div>
+    </div>
+    <div class="timing-bar-container">
+      <span class="timing-label">Protobuf</span>
+      <div class="timing-bar" style="width: 25%; background: #f778ba;">~2 us</div>
+    </div>
+    <div class="timing-bar-container">
+      <span class="timing-label">FlatBuffers</span>
+      <div class="timing-bar" style="width: 20%; background: #d2a8ff;">~2 us</div>
+    </div>
+    <div class="timing-bar-container">
+      <span class="timing-label">Cap'n Proto</span>
+      <div class="timing-bar" style="width: 3%; min-width: 40px; background: #7ee787;">~0 us</div>
+    </div>
+  </div>
+
+  <div style="margin: 1.5rem 0;">
+    <h4 style="color: #79c0ff; margin-bottom: 0.5rem;">Decode Time (lower is better)</h4>
+    <div class="timing-bar-container">
+      <span class="timing-label">JSON</span>
+      <div class="timing-bar" style="width: 100%; background: #e3b341;">~20 us</div>
+    </div>
+    <div class="timing-bar-container">
+      <span class="timing-label">Protobuf</span>
+      <div class="timing-bar" style="width: 15%; background: #f778ba;">~2 us</div>
+    </div>
+    <div class="timing-bar-container">
+      <span class="timing-label">FlatBuffers</span>
+      <div class="timing-bar" style="width: 3%; min-width: 40px; background: #d2a8ff;">~0 us</div>
+    </div>
+    <div class="timing-bar-container">
+      <span class="timing-label">Cap'n Proto</span>
+      <div class="timing-bar" style="width: 3%; min-width: 40px; background: #7ee787;">~0 us</div>
+    </div>
+  </div>
+
+  <div style="margin: 1.5rem 0;">
+    <h4 style="color: #e3b341; margin-bottom: 0.5rem;">Wire Size (lower is better)</h4>
+    <div class="timing-bar-container">
+      <span class="timing-label">JSON</span>
+      <div class="timing-bar" style="width: 100%; background: #e3b341;">~250 bytes</div>
+    </div>
+    <div class="timing-bar-container">
+      <span class="timing-label">Protobuf</span>
+      <div class="timing-bar" style="width: 26%; background: #f778ba;">~65 bytes</div>
+    </div>
+    <div class="timing-bar-container">
+      <span class="timing-label">FlatBuffers</span>
+      <div class="timing-bar" style="width: 48%; background: #d2a8ff;">~120 bytes</div>
+    </div>
+    <div class="timing-bar-container">
+      <span class="timing-label">Cap'n Proto</span>
+      <div class="timing-bar" style="width: 42%; background: #7ee787;">~104 bytes</div>
+    </div>
+  </div>
+
+  <h3>Feature Comparison</h3>
+  <div style="overflow-x: auto; margin: 1rem 0;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+      <thead>
+        <tr style="border-bottom: 2px solid #30363d;">
+          <th style="text-align:left;padding:8px;color:#58a6ff;">Feature</th>
+          <th style="text-align:center;padding:8px;color:#e3b341;">JSON</th>
+          <th style="text-align:center;padding:8px;color:#f778ba;">Protobuf</th>
+          <th style="text-align:center;padding:8px;color:#d2a8ff;">FlatBuffers</th>
+          <th style="text-align:center;padding:8px;color:#7ee787;">Cap'n Proto</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid #21262d;">
+          <td style="padding:8px;">Zero-copy read</td>
+          <td style="text-align:center;padding:8px;color:#f85149;">No</td>
+          <td style="text-align:center;padding:8px;color:#f85149;">No</td>
+          <td style="text-align:center;padding:8px;color:#7ee787;">Yes</td>
+          <td style="text-align:center;padding:8px;color:#7ee787;">Yes</td>
+        </tr>
+        <tr style="border-bottom:1px solid #21262d;">
+          <td style="padding:8px;">Zero-copy write</td>
+          <td style="text-align:center;padding:8px;color:#f85149;">No</td>
+          <td style="text-align:center;padding:8px;color:#f85149;">No</td>
+          <td style="text-align:center;padding:8px;color:#f85149;">No</td>
+          <td style="text-align:center;padding:8px;color:#7ee787;">Yes</td>
+        </tr>
+        <tr style="border-bottom:1px solid #21262d;">
+          <td style="padding:8px;">Schema required</td>
+          <td style="text-align:center;padding:8px;">No</td>
+          <td style="text-align:center;padding:8px;">Yes</td>
+          <td style="text-align:center;padding:8px;">Yes</td>
+          <td style="text-align:center;padding:8px;">Yes</td>
+        </tr>
+        <tr style="border-bottom:1px solid #21262d;">
+          <td style="padding:8px;">Human readable</td>
+          <td style="text-align:center;padding:8px;color:#7ee787;">Yes</td>
+          <td style="text-align:center;padding:8px;color:#f85149;">No</td>
+          <td style="text-align:center;padding:8px;color:#f85149;">No</td>
+          <td style="text-align:center;padding:8px;color:#f85149;">No</td>
+        </tr>
+        <tr style="border-bottom:1px solid #21262d;">
+          <td style="padding:8px;">Built-in RPC</td>
+          <td style="text-align:center;padding:8px;">REST</td>
+          <td style="text-align:center;padding:8px;">gRPC</td>
+          <td style="text-align:center;padding:8px;color:#f85149;">No</td>
+          <td style="text-align:center;padding:8px;color:#7ee787;">Yes + pipelining</td>
+        </tr>
+        <tr style="border-bottom:1px solid #21262d;">
+          <td style="padding:8px;">Selective field read</td>
+          <td style="text-align:center;padding:8px;color:#f85149;">Must parse all</td>
+          <td style="text-align:center;padding:8px;color:#f85149;">Must parse all</td>
+          <td style="text-align:center;padding:8px;color:#7ee787;">Yes (vtable)</td>
+          <td style="text-align:center;padding:8px;color:#7ee787;">Yes (direct)</td>
+        </tr>
+        <tr>
+          <td style="padding:8px;">Alignment</td>
+          <td style="text-align:center;padding:8px;">None</td>
+          <td style="text-align:center;padding:8px;">None</td>
+          <td style="text-align:center;padding:8px;">4-byte</td>
+          <td style="text-align:center;padding:8px;">8-byte (word)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>The Cost of Bandwidth</h3>
+  <p>At 1M messages/second, cross-DC transfer at $0.01/GB:</p>
+  <div style="margin: 1rem 0;">
+    <div class="timing-bar-container">
+      <span class="timing-label">Protobuf 65B</span>
+      <div class="timing-bar" style="width: 26%; background: #f778ba;">$56/day</div>
+    </div>
+    <div class="timing-bar-container">
+      <span class="timing-label">FlatBuf 120B</span>
+      <div class="timing-bar" style="width: 48%; background: #d2a8ff;">$104/day</div>
+    </div>
+    <div class="timing-bar-container">
+      <span class="timing-label">Cap'n Proto 104B</span>
+      <div class="timing-bar" style="width: 42%; background: #7ee787;">$90/day</div>
+    </div>
+    <div class="timing-bar-container">
+      <span class="timing-label">JSON 250B</span>
+      <div class="timing-bar" style="width: 100%; background: #e3b341;">$216/day</div>
+    </div>
+  </div>
+  <p>Cap'n Proto trades wire size for zero serialization overhead. The next question: can compression shrink the bytes further? That is Chapter 08.</p>
+</div>
+
+<script>
+// ── Tab switching ──
+function switchTab(idx) {
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+  document.querySelectorAll('.tab-content').forEach((c, i) => c.classList.toggle('active', i === idx));
+}
+
+// ── Format display switching ──
+function showFormat(fmt) {
+  ['python', 'protobuf', 'flatbuf', 'capnp'].forEach(f => {
+    document.getElementById('fmt-' + f).style.display = f === fmt ? 'block' : 'none';
+  });
+  document.querySelectorAll('#tab0 .btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+}
+
+// ── Build memory layout visualizations ──
+function buildLayouts() {
+  // Python objects
+  const pyDiv = document.getElementById('python-layout');
+  pyDiv.innerHTML = buildMemRow('Heap', [
+    { text: 'Order obj\n(PyObject 64B)', cls: 'header-cell', tip: 'Python object header + dict pointer' },
+  ]) + buildMemRow('', [
+    { text: 'id="ord00042"\n(str 80B)', cls: 'text-data', tip: 'PyUnicodeObject: refcount + hash + UTF-8 data' },
+    { text: 'rest_id="rest0001"\n(str 80B)', cls: 'text-data', tip: 'Separate heap allocation' },
+  ]) + buildMemRow('', [
+    { text: 'status=5\n(int 28B)', cls: 'data-section', tip: 'PyLongObject: even a small int is 28 bytes' },
+    { text: 'tip_cents=500\n(int 28B)', cls: 'data-section', tip: 'Another 28-byte PyLongObject' },
+    { text: 'created_at\n(float 24B)', cls: 'data-section', tip: 'PyFloatObject with IEEE 754 double' },
+  ]) + buildMemRow('', [
+    { text: 'txn_id=2^53+1\n(int 32B)', cls: 'data-section', tip: 'Large int needs extra digit storage' },
+    { text: 'driver_id="driv0001"\n(str 80B)', cls: 'text-data', tip: 'Yet another heap-allocated string' },
+  ]) + '<p style="margin-top:0.5rem;font-size:0.75rem;color:#f85149;">Each field is a separate heap object. ~7 pointer dereferences to read all fields.</p>';
+
+  // Protobuf
+  const pbDiv = document.getElementById('protobuf-layout');
+  pbDiv.innerHTML = buildMemRow('Bytes', [
+    { text: '08 81 80...', cls: 'header-cell', tip: 'Field 1, varint: platform_txn_id (10 bytes varint for 2^53+1)', w: 120 },
+    { text: '11 00...', cls: 'data-section', tip: 'Field 2, fixed64: created_at as double (8 bytes)', w: 80 },
+    { text: '18 05', cls: 'data-section', tip: 'Field 3, varint: status=5 (2 bytes)', w: 50 },
+    { text: '20 f4 03', cls: 'data-section', tip: 'Field 4, varint: tip_cents=500 (3 bytes)', w: 60 },
+  ]) + buildMemRow('', [
+    { text: '2a 08 6f726430...', cls: 'text-data', tip: 'Field 5, length-delimited: id="ord00042"', w: 120 },
+    { text: '32 08 72657374...', cls: 'text-data', tip: 'Field 6, length-delimited: restaurant_id="rest0001"', w: 120 },
+    { text: '3a 08 64726976...', cls: 'text-data', tip: 'Field 7, length-delimited: driver_id="driv0001"', w: 120 },
+  ]) + '<p style="margin-top:0.5rem;font-size:0.75rem;color:#e3b341;">Compact: varints + no padding. But must parse sequentially from start.</p>';
+
+  // FlatBuffers
+  const fbDiv = document.getElementById('flatbuf-layout');
+  fbDiv.innerHTML = buildMemRow('Offset 0', [
+    { text: 'root_off\n(uint32)', cls: 'offset-cell', tip: 'Points to root table position in buffer', w: 70 },
+  ]) + buildMemRow('VTable', [
+    { text: 'vt_size', cls: 'vtable-cell', tip: 'VTable byte size (uint16)', w: 55 },
+    { text: 'tbl_size', cls: 'vtable-cell', tip: 'Table data size (uint16)', w: 55 },
+    { text: 'f0:off', cls: 'vtable-cell', tip: 'Field 0 offset (uint16)', w: 50 },
+    { text: 'f1:off', cls: 'vtable-cell', tip: 'Field 1 offset (uint16)', w: 50 },
+    { text: 'f2:off', cls: 'vtable-cell', tip: 'Field 2 offset', w: 50 },
+    { text: '...', cls: 'vtable-cell', tip: 'More field offsets', w: 40 },
+  ]) + buildMemRow('Table', [
+    { text: 'soffset32\n(-> vtable)', cls: 'offset-cell', tip: 'Signed offset from table to vtable', w: 80 },
+    { text: 'created_at\nfloat64', cls: 'data-section', tip: 'Inline scalar (8 bytes)', w: 80 },
+    { text: 'txn_id\nint64', cls: 'data-section', tip: 'Inline scalar (8 bytes)', w: 80 },
+    { text: 'tip\ni32', cls: 'data-section', tip: 'Inline scalar (4 bytes)', w: 50 },
+    { text: 'st\nu8', cls: 'data-section', tip: 'Status byte', w: 40 },
+  ]) + buildMemRow('Strings', [
+    { text: 'len=8 "ord00042\\0"', cls: 'text-data', tip: 'FlatBuffer string: uint32 length + UTF-8 + NUL + padding', w: 140 },
+    { text: 'len=8 "rest0001\\0"', cls: 'text-data', tip: 'Another string', w: 140 },
+    { text: 'len=8 "driv0001\\0"', cls: 'text-data', tip: 'Another string', w: 140 },
+  ]) + '<p style="margin-top:0.5rem;font-size:0.75rem;color:#d2a8ff;">Built back-to-front. VTable lookup for each field (2 indirections).</p>';
+
+  // Cap'n Proto
+  const cpDiv = document.getElementById('capnp-layout');
+  cpDiv.innerHTML = buildMemRow('Header', [
+    { text: 'seg_count-1\n(uint32): 0', cls: 'header-cell', tip: 'Single segment (count minus one = 0)', w: 90 },
+    { text: 'seg_size\n(uint32)', cls: 'header-cell', tip: 'Segment size in words', w: 90 },
+  ]) + buildMemRow('Word 0', [
+    { text: 'Root struct pointer (64 bits)\ntype=0 | offset=0 | data=4w | ptrs=3w', cls: 'offset-cell', tip: 'Points to the root Order struct. Encodes data and pointer section sizes.', w: 400 },
+  ]) + buildMemRow('Word 1', [
+    { text: 'platform_transaction_id (Int64)', cls: 'data-section', tip: 'Data word 0: 8 bytes, read with one unpack call', w: 400 },
+  ]) + buildMemRow('Word 2', [
+    { text: 'created_at (Float64)', cls: 'data-section', tip: 'Data word 1: IEEE 754 double', w: 400 },
+  ]) + buildMemRow('Word 3', [
+    { text: 'tip_cents (i32)', cls: 'data-section', tip: '32-bit int at bytes 0-3 of this word', w: 160 },
+    { text: 'status (u16)', cls: 'data-section', tip: '16-bit enum at bytes 4-5', w: 100 },
+    { text: 'pad', cls: 'padding-cell', tip: 'Padding to fill the 8-byte word', w: 80 },
+  ]) + buildMemRow('Word 4', [
+    { text: 'reserved / padding', cls: 'padding-cell', tip: 'Word-aligned padding (this is the cost of alignment)', w: 400 },
+  ]) + buildMemRow('Word 5', [
+    { text: 'Pointer 0: id (list ptr -> text bytes)', cls: 'ptr-section', tip: 'List pointer: type=1, elem_size=byte, count=9, offset to text data', w: 400 },
+  ]) + buildMemRow('Word 6', [
+    { text: 'Pointer 1: restaurant_id (list ptr)', cls: 'ptr-section', tip: 'Points to "rest0001\\0" bytes', w: 400 },
+  ]) + buildMemRow('Word 7', [
+    { text: 'Pointer 2: driver_id (list ptr)', cls: 'ptr-section', tip: 'Points to "driv0001\\0" bytes', w: 400 },
+  ]) + buildMemRow('Words 8+', [
+    { text: '"ord00042\\0" + pad', cls: 'text-data', tip: 'NUL-terminated UTF-8, padded to 8-byte boundary', w: 130 },
+    { text: '"rest0001\\0" + pad', cls: 'text-data', tip: 'Each text is word-aligned', w: 130 },
+    { text: '"driv0001\\0" + pad', cls: 'text-data', tip: 'Word-aligned text data', w: 130 },
+  ]) + '<p style="margin-top:0.5rem;font-size:0.75rem;color:#7ee787;">Built front-to-back. No vtable. Field offset = direct computation from schema.</p>';
+}
+
+function buildMemRow(label, cells) {
+  let html = '<div class="memory-row">';
+  if (label) html += `<div class="row-label">${label}</div>`;
+  else html += '<div class="row-label"></div>';
+  for (const c of cells) {
+    const w = c.w ? `width:${c.w}px;` : 'flex:1;';
+    html += `<div class="mem-cell ${c.cls}" style="${w}">
+      ${c.text.replace(/\n/g, '<br>')}
+      <span class="tooltip">${c.tip}</span>
+    </div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+// ── Pointer anatomy ──
+function buildPointerVis() {
+  // Struct pointer
+  const structRanges = [
+    { bits: '0-1', width: 4, color: '#e3b341', label: 'Type', value: '00', desc: 'Pointer type: 00 = struct, 01 = list, 10 = far, 11 = other/capability' },
+    { bits: '2-31', width: 42, color: '#7ee787', label: 'Offset', value: '0 words', desc: 'Signed 30-bit offset in words from the end of this pointer to the start of the target struct. Calculated as: target_word - (pointer_word + 1)' },
+    { bits: '32-47', width: 27, color: '#79c0ff', label: 'Data Words', value: '4', desc: 'Size of the struct data section in 8-byte words. All scalar fields (int, float, bool, enum) live inline in this section.' },
+    { bits: '48-63', width: 27, color: '#d2a8ff', label: 'Ptr Words', value: '3', desc: 'Size of the struct pointer section in 8-byte words. Each pointer references a text string, list, or sub-struct.' },
+  ];
+  renderPointerVis('struct-ptr-vis', 'struct-ptr-info', structRanges);
+
+  // List pointer
+  const listRanges = [
+    { bits: '0-1', width: 4, color: '#e3b341', label: 'Type', value: '01', desc: 'Pointer type: 01 = list. Cap\'n Proto treats Text as a list of bytes.' },
+    { bits: '2-31', width: 42, color: '#7ee787', label: 'Offset', value: '3 words', desc: 'Signed 30-bit offset in words from end of pointer to start of list data.' },
+    { bits: '32-34', width: 7, color: '#f778ba', label: 'Elem Size', value: '2 (byte)', desc: 'Element size tag: 0=void, 1=bit, 2=byte, 3=2byte, 4=4byte, 5=8byte, 6=pointer, 7=composite. Text uses 2 (byte).' },
+    { bits: '35-63', width: 47, color: '#79c0ff', label: 'Count', value: '9', desc: 'Element count (29 bits, max ~500M). For text, this is strlen + 1 (includes NUL terminator). "ord00042" has 8 chars + NUL = 9.' },
+  ];
+  renderPointerVis('list-ptr-vis', 'list-ptr-info', listRanges);
+}
+
+function renderPointerVis(visId, infoId, ranges) {
+  const vis = document.getElementById(visId);
+  let html = '';
+  for (const r of ranges) {
+    html += `<div class="bit-range" style="width:${r.width}%;background:${r.color}30;border-left:2px solid ${r.color};"
+      onmouseenter="document.getElementById('${infoId}').innerHTML='<strong style=color:${r.color}>Bits ${r.bits}: ${r.label}</strong><br>${r.desc}<br><br>Value in example: <strong>${r.value}</strong>'"
+      onmouseleave="document.getElementById('${infoId}').textContent='Hover over a bit range to see its meaning.'">
+      <strong>${r.label}</strong>
+      <span class="bit-label">bits ${r.bits}</span>
+    </div>`;
+  }
+  vis.innerHTML = html;
+}
+
+function showPointer(type) {
+  document.getElementById('pointer-struct').style.display = type === 'struct' ? 'block' : 'none';
+  document.getElementById('pointer-list').style.display = type === 'list' ? 'block' : 'none';
+  document.querySelectorAll('#tab1 .btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+}
+
+// ── Promise pipelining animation ──
+let animTimer = null;
+function startAnimation() {
+  resetAnimation();
+  const rtt = parseInt(document.getElementById('rtt-select').value);
+  document.getElementById('trad-total').textContent = `Total: 2 x ${rtt}ms = ${2*rtt}ms`;
+  document.getElementById('pipe-total').textContent = `Total: 1 x ${rtt}ms = ${rtt}ms`;
+
+  const delay = 600; // animation step delay in ms
+
+  const steps = [
+    () => { show('trad-s1'); show('pipe-s1'); },
+    () => { show('trad-s2'); show('pipe-s2'); },
+    () => { show('trad-s3'); show('pipe-s3'); },
+    () => { show('trad-s4'); show('pipe-s4'); },
+    () => { show('trad-s5'); },
+  ];
+
+  let i = 0;
+  animTimer = setInterval(() => {
+    if (i < steps.length) { steps[i](); i++; }
+    else { clearInterval(animTimer); animTimer = null; }
+  }, delay);
+}
+
+function resetAnimation() {
+  if (animTimer) { clearInterval(animTimer); animTimer = null; }
+  document.querySelectorAll('.trad-step, .pipe-step').forEach(el => el.style.display = 'none');
+}
+
+function show(id) { document.getElementById(id).style.display = 'block'; }
+
+// ── Latency bars ──
+function buildLatencyBars() {
+  const container = document.getElementById('latency-bars');
+  const scenarios = [
+    { label: 'Same DC (1ms)', rtt: 1 },
+    { label: 'Cross-AZ (5ms)', rtt: 5 },
+    { label: 'Cross-region (50ms)', rtt: 50 },
+    { label: 'Cross-continent (150ms)', rtt: 150 },
+  ];
+  const maxMs = 150 * 4;
+  let html = '<div style="margin-top:0.5rem;">';
+  for (const s of scenarios) {
+    const trad = s.rtt * 4;
+    const pipe = s.rtt * 1;
+    const tradW = (trad / maxMs * 100).toFixed(1);
+    const pipeW = (pipe / maxMs * 100).toFixed(1);
+    html += `<div style="margin-bottom:0.75rem;">
+      <div style="font-size:0.75rem;color:#8b949e;margin-bottom:2px;">${s.label}</div>
+      <div class="timing-bar-container">
+        <span class="timing-label" style="color:#f778ba;">Traditional</span>
+        <div class="timing-bar" style="width:${tradW}%;min-width:30px;background:#f778ba80;">${trad}ms</div>
+        <span class="timing-value">(4 RTTs)</span>
+      </div>
+      <div class="timing-bar-container">
+        <span class="timing-label" style="color:#7ee787;">Pipelined</span>
+        <div class="timing-bar" style="width:${pipeW}%;min-width:30px;background:#7ee78780;">${pipe}ms</div>
+        <span class="timing-value">(1 RTT) = 75% savings</span>
+      </div>
+    </div>`;
+  }
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+// ── Initialize ──
+document.addEventListener('DOMContentLoaded', () => {
+  buildLayouts();
+  buildPointerVis();
+  buildLatencyBars();
+});
+</script>
+</body>
+</html>
