@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ch09: Schema Evolution - FoodDash Wire</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #242736;
+    --border: #2e3144;
+    --text: #e1e4ed;
+    --text-dim: #8b8fa3;
+    --accent: #6c8cff;
+    --green: #4ade80;
+    --yellow: #fbbf24;
+    --red: #f87171;
+    --green-bg: #162316;
+    --yellow-bg: #2a2310;
+    --red-bg: #2a1515;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 1.8em; margin-bottom: 8px; color: var(--accent); font-weight: 700; }
+  h2 { font-size: 1.3em; margin: 32px 0 16px; color: var(--text); font-weight: 600; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  h3 { font-size: 1.05em; margin: 16px 0 8px; color: var(--text-dim); font-weight: 500; }
+  .subtitle { color: var(--text-dim); margin-bottom: 32px; font-size: 0.9em; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; margin-bottom: 24px; flex-wrap: wrap; }
+  .tab {
+    padding: 8px 20px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px 6px 0 0; cursor: pointer; color: var(--text-dim);
+    font-size: 0.85em; transition: all 0.2s;
+  }
+  .tab:hover { background: var(--surface2); color: var(--text); }
+  .tab.active { background: var(--surface2); color: var(--accent); border-bottom-color: var(--surface2); font-weight: 600; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* Matrix table */
+  .matrix { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.85em; }
+  .matrix th, .matrix td { padding: 10px 14px; text-align: center; border: 1px solid var(--border); }
+  .matrix th { background: var(--surface); color: var(--text-dim); font-weight: 500; }
+  .matrix td.label { text-align: left; font-weight: 500; color: var(--text); background: var(--surface); min-width: 180px; }
+  .matrix td.pass { background: var(--green-bg); color: var(--green); cursor: pointer; }
+  .matrix td.partial { background: var(--yellow-bg); color: var(--yellow); cursor: pointer; }
+  .matrix td.fail { background: var(--red-bg); color: var(--red); cursor: pointer; }
+  .matrix td:hover { opacity: 0.85; }
+
+  /* Detail panel */
+  .detail-panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 20px; margin: 16px 0; display: none; animation: fadeIn 0.2s;
+  }
+  .detail-panel.visible { display: block; }
+  .detail-panel h3 { color: var(--accent); margin-top: 0; }
+  .detail-panel p { color: var(--text-dim); font-size: 0.9em; margin: 8px 0; }
+  .detail-panel code { background: var(--surface2); padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+  /* Timeline */
+  .timeline { position: relative; margin: 24px 0; padding-left: 40px; }
+  .timeline::before { content: ''; position: absolute; left: 16px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+  .timeline-item {
+    position: relative; margin-bottom: 20px; padding: 16px 20px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .timeline-item:hover { border-color: var(--accent); }
+  .timeline-item.active { border-color: var(--accent); background: var(--surface2); }
+  .timeline-item::before {
+    content: ''; position: absolute; left: -32px; top: 20px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--accent); border: 2px solid var(--bg);
+  }
+  .version-tag { font-size: 0.75em; color: var(--accent); font-weight: 600; margin-bottom: 4px; }
+  .version-date { font-size: 0.75em; color: var(--text-dim); }
+  .version-changes { display: none; margin-top: 12px; font-size: 0.85em; }
+  .timeline-item.active .version-changes { display: block; }
+  .change-item { padding: 4px 0; color: var(--text-dim); }
+  .change-item .added { color: var(--green); }
+  .change-item .removed { color: var(--red); }
+  .change-item .modified { color: var(--yellow); }
+
+  /* Format compat per version */
+  .format-compat { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+  .format-card {
+    background: var(--surface2); border-radius: 6px; padding: 10px; text-align: center;
+    font-size: 0.8em; border: 1px solid var(--border);
+  }
+  .format-card .fmt-name { font-weight: 600; margin-bottom: 4px; }
+  .format-card .fmt-result { font-weight: 600; }
+  .fmt-pass { color: var(--green); }
+  .fmt-partial { color: var(--yellow); }
+  .fmt-fail { color: var(--red); }
+
+  /* Version checker */
+  .checker { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 24px; }
+  .checker-row { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .checker-row label { color: var(--text-dim); font-size: 0.85em; min-width: 100px; }
+  select {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 12px; border-radius: 6px; font-family: inherit; font-size: 0.85em;
+    cursor: pointer; min-width: 160px;
+  }
+  select:focus { outline: none; border-color: var(--accent); }
+  .checker-result {
+    margin-top: 16px; padding: 16px; border-radius: 6px;
+    font-size: 0.9em; line-height: 1.7;
+  }
+  .checker-result.pass { background: var(--green-bg); border: 1px solid #22543d; }
+  .checker-result.partial { background: var(--yellow-bg); border: 1px solid #744210; }
+  .checker-result.fail { background: var(--red-bg); border: 1px solid #742a2a; }
+
+  /* Legend */
+  .legend { display: flex; gap: 24px; margin: 16px 0; font-size: 0.8em; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 3px; }
+  .legend-dot.green { background: var(--green); }
+  .legend-dot.yellow { background: var(--yellow); }
+  .legend-dot.red { background: var(--red); }
+</style>
+</head>
+<body>
+
+<h1>Chapter 09: Schema Evolution</h1>
+<p class="subtitle">What breaks, what survives, and how each format handles change differently.</p>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('matrix')">Compatibility Matrix</div>
+  <div class="tab" onclick="switchTab('timeline')">Evolution Timeline</div>
+  <div class="tab" onclick="switchTab('checker')">Version Checker</div>
+</div>
+
+<!-- TAB 1: COMPATIBILITY MATRIX -->
+<div id="tab-matrix" class="tab-content active">
+  <h2>Schema Change Compatibility Matrix</h2>
+  <p style="color:var(--text-dim);font-size:0.85em;margin-bottom:12px;">
+    Click any cell for a detailed explanation of why it passes, partially works, or fails.
+  </p>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot green"></div> PASS - works correctly</div>
+    <div class="legend-item"><div class="legend-dot yellow"></div> PARTIAL - works with caveats</div>
+    <div class="legend-item"><div class="legend-dot red"></div> FAIL - breaks</div>
+  </div>
+
+  <table class="matrix" id="compat-matrix">
+    <thead>
+      <tr>
+        <th>Schema Change</th>
+        <th>JSON</th>
+        <th>MsgPack</th>
+        <th>Protobuf</th>
+        <th>Avro</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div class="detail-panel" id="matrix-detail">
+    <h3 id="detail-title"></h3>
+    <p id="detail-body"></p>
+  </div>
+
+  <h3>Backward / Forward / Full Compatibility (Add Field with Default)</h3>
+  <table class="matrix">
+    <thead>
+      <tr><th>Direction</th><th>JSON</th><th>MsgPack</th><th>Protobuf</th><th>Avro</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="label">Backward (new reader, old data)</td>
+        <td class="pass">PASS</td><td class="pass">PASS</td><td class="pass">PASS</td><td class="partial">PASS*</td>
+      </tr>
+      <tr>
+        <td class="label">Forward (old reader, new data)</td>
+        <td class="pass">PASS</td><td class="pass">PASS</td><td class="pass">PASS</td><td class="pass">PASS</td>
+      </tr>
+      <tr>
+        <td class="label">Full (both directions)</td>
+        <td class="pass">PASS</td><td class="pass">PASS</td><td class="pass">PASS</td><td class="partial">PARTIAL</td>
+      </tr>
+    </tbody>
+  </table>
+  <p style="color:var(--text-dim);font-size:0.8em;margin-top:4px;">* Avro requires Schema Registry for resolution. Without it, backward compat fails.</p>
+</div>
+
+<!-- TAB 2: EVOLUTION TIMELINE -->
+<div id="tab-timeline" class="tab-content">
+  <h2>FoodDash Order Schema: v1 through v7</h2>
+  <p style="color:var(--text-dim);font-size:0.85em;margin-bottom:20px;">
+    Click a version to see what changed and how each format handles the transition.
+  </p>
+  <div class="timeline" id="timeline"></div>
+</div>
+
+<!-- TAB 3: VERSION CHECKER -->
+<div id="tab-checker" class="tab-content">
+  <h2>Version Compatibility Checker</h2>
+  <p style="color:var(--text-dim);font-size:0.85em;margin-bottom:20px;">
+    Select a writer version, reader version, and format to check compatibility.
+  </p>
+  <div class="checker">
+    <div class="checker-row">
+      <label>Writer version:</label>
+      <select id="writer-version">
+        <option value="1">v1 - Launch</option>
+        <option value="2">v2 - Tips & Drivers</option>
+        <option value="3" selected>v3 - Item Restructure</option>
+        <option value="4">v4 - Payment Rework</option>
+        <option value="5">v5 - Delivery Tracking</option>
+        <option value="6">v6 - Loyalty Program</option>
+        <option value="7">v7 - Real-time ETA</option>
+      </select>
+    </div>
+    <div class="checker-row">
+      <label>Reader version:</label>
+      <select id="reader-version">
+        <option value="1">v1 - Launch</option>
+        <option value="2">v2 - Tips & Drivers</option>
+        <option value="3">v3 - Item Restructure</option>
+        <option value="4">v4 - Payment Rework</option>
+        <option value="5" selected>v5 - Delivery Tracking</option>
+        <option value="6">v6 - Loyalty Program</option>
+        <option value="7">v7 - Real-time ETA</option>
+      </select>
+    </div>
+    <div class="checker-row">
+      <label>Format:</label>
+      <select id="checker-format">
+        <option value="json">JSON</option>
+        <option value="msgpack">MessagePack</option>
+        <option value="protobuf" selected>Protobuf</option>
+        <option value="avro">Avro</option>
+      </select>
+    </div>
+    <div class="checker-result" id="checker-result"></div>
+  </div>
+</div>
+
+<script>
+// ============================================================================
+// DATA
+// ============================================================================
+
+const matrixData = [
+  {
+    change: "Add field",
+    json: { result: "pass", detail: "Old reader ignores the unknown key -- as long as the code uses dict.get() with a default. Direct key access (data['loyalty_points']) raises KeyError." },
+    msgpack: { result: "pass", detail: "Same as JSON: MsgPack maps are keyed by name. Unknown keys are simply not accessed by the old reader. Requires .get() discipline." },
+    protobuf: { result: "pass", detail: "Unknown tags are silently skipped. The wire format encodes the wire type with the tag, so the decoder knows exactly how many bytes to skip. The old reader never sees the new field." },
+    avro: { result: "pass", detail: "If the new field has a default value, the old reader ignores trailing bytes. With Schema Registry resolution, the new field is properly matched by name and default-filled. Without default: FAIL." }
+  },
+  {
+    change: "Remove field",
+    json: { result: "partial", detail: "dict.get('promo_code') returns None -- safe. But data['promo_code'] raises KeyError. And code that does arithmetic on None gets a TypeError downstream. The format cannot distinguish 'missing' from 'null'." },
+    msgpack: { result: "partial", detail: "Same as JSON: .get() returns None, direct access raises KeyError. MsgPack provides no mechanism to distinguish 'field was removed from schema' from 'field was set to null'." },
+    protobuf: { result: "pass", detail: "Missing fields get their default value: 0 for integers, empty string for strings, false for bools. Proto3 default semantics mean this is well-defined and safe." },
+    avro: { result: "fail", detail: "Without resolution, the reader tries to read a field that was not written, consuming bytes from the next field. With Schema Registry: PASS if the removed field had a default in the old reader's schema." }
+  },
+  {
+    change: "Rename field",
+    json: { result: "fail", detail: "driver_id renamed to courier_id means the old reader looks for 'driver_id' and finds nothing. The new key 'courier_id' is treated as unknown. Both are effectively lost." },
+    msgpack: { result: "fail", detail: "Same as JSON: field names ARE the identifiers in MsgPack maps. A rename is equivalent to removing one field and adding another." },
+    protobuf: { result: "pass", detail: "Field names never appear on the wire. Only tag numbers matter. You can rename driver_id to courier_id in your .proto file as long as the field number stays the same. The bytes are identical." },
+    avro: { result: "fail", detail: "Avro matches fields by name during schema resolution. courier_id does not match driver_id. Workaround: use Avro aliases -- declare aliases: ['driver_id'] on the courier_id field." }
+  },
+  {
+    change: "Change type",
+    json: { result: "fail", detail: "tip_cents changed from int to string '500'. JSON decodes it without error. The old reader now has a string where it expects an integer. 'subtotal + tip_cents' becomes string concatenation or TypeError. Silent corruption." },
+    msgpack: { result: "fail", detail: "Same as JSON: MsgPack preserves the actual type (int vs string) but the reader has no way to enforce expected types. A string '500' passes decoding but breaks integer arithmetic." },
+    protobuf: { result: "fail", detail: "The wire type is encoded in the tag. Changing from varint (wire type 0) to length-delimited (wire type 2) means the decoder reads the wrong number of bytes. Produces garbage or a decode error." },
+    avro: { result: "fail", detail: "Reader expects int bytes (zigzag varint) but gets string bytes (length prefix + UTF-8). The varint decoder misinterprets the string length as the integer value. Exception: Avro supports specific promotions: int->long, float->double." }
+  },
+  {
+    change: "Add enum value",
+    json: { result: "partial", detail: "JSON has no enum type -- enums are just strings. The old reader receives 'refunded' where it expected one of the known values. No crash, but if/elif chains without a default case silently fall through." },
+    msgpack: { result: "partial", detail: "Same as JSON: the string 'refunded' is a valid MsgPack string. The old reader's business logic may not handle the unknown value, but the deserialization succeeds." },
+    protobuf: { result: "partial", detail: "Enums are varints on the wire. The old reader receives integer 9 but has no name for it. Proto3 keeps the raw integer (unlike proto2 which rejected unknowns). Business logic may not handle UNKNOWN(9)." },
+    avro: { result: "fail", detail: "Avro enums are stored as integer indices. If the writer sends index 8 (REFUNDED) but the reader's enum only has 8 symbols (indices 0-7), the reader crashes with IndexError." }
+  },
+  {
+    change: "Reorder fields",
+    json: { result: "pass", detail: "JSON objects are unordered by specification (RFC 8259). Fields are matched by key name, not position. Reordering has zero effect on parsing." },
+    msgpack: { result: "pass", detail: "MsgPack maps are keyed by name. The decoder builds a dict from key-value pairs regardless of order. Field position is irrelevant." },
+    protobuf: { result: "pass", detail: "Protobuf fields are identified by tag number, not position. Fields can appear in any order on the wire. The decoder matches each field by its tag." },
+    avro: { result: "fail", detail: "Without resolution, Avro reads fields positionally (in schema order). Reordering the writer's fields means the reader reads the wrong bytes for each field. With Schema Registry: PASS (resolution matches by name)." }
+  }
+];
+
+const versionHistory = [
+  {
+    version: "v1", date: "Month 0 (Launch)", title: "Basic Order",
+    fields: ["id: string", "customer_id: string", "restaurant_id: string", "items: string", "status: enum", "total_cents: int", "created_at: timestamp"],
+    changes: [],
+    compat: { json: "N/A", msgpack: "N/A", protobuf: "N/A", avro: "N/A" }
+  },
+  {
+    version: "v2", date: "Month 3", title: "Tips & Driver Assignment",
+    fields: ["id", "customer_id", "restaurant_id", "items: string", "status", "total_cents", "tip_cents: int (NEW)", "driver_id: string (NEW)", "created_at"],
+    changes: [
+      { type: "added", text: "tip_cents: int (default 0)" },
+      { type: "added", text: "driver_id: optional string" }
+    ],
+    compat: { json: "PASS", msgpack: "PASS", protobuf: "PASS", avro: "PASS*" }
+  },
+  {
+    version: "v3", date: "Month 6", title: "Item Restructure",
+    fields: ["id", "customer_id", "restaurant_id", "items: list[Item] (CHANGED)", "status", "total_cents", "tip_cents", "driver_id", "created_at"],
+    changes: [
+      { type: "modified", text: "items: string -> list[Item] (TYPE CHANGE)" }
+    ],
+    compat: { json: "FAIL", msgpack: "FAIL", protobuf: "PASS (new field #)", avro: "FAIL" }
+  },
+  {
+    version: "v4", date: "Month 10", title: "Payment Rework",
+    fields: ["id", "customer_id", "restaurant_id", "items", "status", "total_cents", "tip_cents", "driver_id", "payment_method: enum (NEW)", "payment_ref: string (NEW)", "created_at"],
+    changes: [
+      { type: "added", text: "payment_method: enum" },
+      { type: "added", text: "payment_ref: string" }
+    ],
+    compat: { json: "PASS", msgpack: "PASS", protobuf: "PASS", avro: "PASS*" }
+  },
+  {
+    version: "v5", date: "Month 14", title: "Delivery Tracking",
+    fields: ["id", "customer_id", "restaurant_id", "items", "status", "total_cents", "tip_cents", "driver_id", "payment_method", "payment_ref", "delivery_notes: string (NEW)", "estimated_delivery_min: int (NEW)", "created_at"],
+    changes: [
+      { type: "added", text: "delivery_notes: optional string" },
+      { type: "added", text: "estimated_delivery_min: int" }
+    ],
+    compat: { json: "PASS", msgpack: "PASS", protobuf: "PASS", avro: "PASS*" }
+  },
+  {
+    version: "v6", date: "Month 18", title: "Loyalty Program",
+    fields: ["id", "customer_id", "restaurant_id", "items", "status", "total_cents", "tip_cents", "driver_id", "payment_method", "payment_ref", "delivery_notes", "estimated_delivery_min", "loyalty_points: int (NEW)", "promo_code: string (NEW)", "created_at"],
+    changes: [
+      { type: "added", text: "loyalty_points: int (default 0)" },
+      { type: "added", text: "promo_code: optional string" }
+    ],
+    compat: { json: "PASS", msgpack: "PASS", protobuf: "PASS", avro: "PASS*" }
+  },
+  {
+    version: "v7", date: "Month 24", title: "Real-time ETA & Cleanup",
+    fields: ["id", "customer_id", "restaurant_id", "items", "status", "tip_cents", "driver_id", "payment_method", "payment_ref", "delivery_notes", "estimated_delivery_min", "loyalty_points", "promo_code", "eta_seconds: int (NEW)", "driver_location: GeoPoint (NEW)", "created_at", "updated_at: timestamp (NEW)"],
+    changes: [
+      { type: "added", text: "eta_seconds: int (real-time ETA)" },
+      { type: "added", text: "driver_location: GeoPoint (lat/lng)" },
+      { type: "added", text: "updated_at: timestamp" },
+      { type: "removed", text: "total_cents: removed (computed from items)" }
+    ],
+    compat: { json: "PARTIAL", msgpack: "PARTIAL", protobuf: "PASS", avro: "FAIL*" }
+  }
+];
+
+// Version checker compatibility logic
+function checkCompat(writerV, readerV, format) {
+  const w = parseInt(writerV);
+  const r = parseInt(readerV);
+
+  if (w === r) return { result: "pass", msg: "Same version -- fully compatible." };
+
+  // Check for the v3 type change (items: string -> list)
+  const crossesV3 = (w < 3 && r >= 3) || (w >= 3 && r < 3);
+  // Check for v7 field removal (total_cents)
+  const crossesV7Removal = (w < 7 && r >= 7) || (w >= 7 && r < 7);
+
+  if (format === "protobuf") {
+    if (crossesV3) {
+      return { result: "pass", msg: `Protobuf handles the v3 items change safely: the old string field (tag 4) is kept as-is, and the new list field uses a new tag (tag 10). Old readers see the old field; new readers see the new field. Tag-based identification means both coexist.` };
+    }
+    if (crossesV7Removal) {
+      return { result: "pass", msg: `Protobuf handles the v7 removal of total_cents safely. The field tag is simply not emitted by the v7 writer. Old readers get the default value (0). New readers ignore it if present in old data.` };
+    }
+    if (w > r) {
+      return { result: "pass", msg: `Forward compatible: v${r} reader can read v${w} data. Unknown field tags are silently skipped. All fields the old reader knows about are present (or get defaults).` };
+    }
+    return { result: "pass", msg: `Backward compatible: v${r} reader can read v${w} data. Missing fields get default values (0, empty string, false).` };
+  }
+
+  if (format === "json" || format === "msgpack") {
+    if (crossesV3) {
+      return { result: "fail", msg: `v3 changed 'items' from a string to a list. ${format === "json" ? "JSON" : "MsgPack"} carries the actual value type. The ${w < 3 ? "writer sends a string" : "writer sends a list"} but the ${r < 3 ? "reader expects a string" : "reader expects a list"}. Code that iterates items will get characters instead of item objects, or vice versa. Silent corruption.` };
+    }
+    if (w > r) {
+      const newFields = [];
+      for (let v = r + 1; v <= w; v++) {
+        versionHistory[v - 1].changes.forEach(c => {
+          if (c.type === "added") newFields.push(c.text);
+        });
+      }
+      return { result: "pass", msg: `Forward compatible: v${r} reader ignores unknown fields from v${w}. New fields: ${newFields.join(", ") || "none"}. Requires .get() with defaults in the reader code.` };
+    }
+    const missingFields = [];
+    for (let v = w + 1; v <= r; v++) {
+      versionHistory[v - 1].changes.forEach(c => {
+        if (c.type === "added") missingFields.push(c.text);
+      });
+    }
+    return { result: "pass", msg: `Backward compatible: v${r} reader reads v${w} data. Missing fields default via .get(): ${missingFields.join(", ") || "none"}.` };
+  }
+
+  if (format === "avro") {
+    if (crossesV3) {
+      return { result: "fail", msg: `Avro FAILS across the v3 boundary. The items field changed from string to array. Without schema resolution, the decoder reads string bytes as array block counts -- immediate crash. Even with resolution, type change from string to array is not a supported Avro promotion.` };
+    }
+    if (crossesV7Removal) {
+      return { result: "partial", msg: `v7 removed total_cents. With Schema Registry resolution: the old reader's schema has total_cents with a default, so resolution fills it in = PASS. Without resolution: positional misalignment crashes the decoder.` };
+    }
+    if (Math.abs(w - r) === 1) {
+      return { result: "partial", msg: `Adjacent version compatibility with Avro depends on the Schema Registry. With resolution: fields added with defaults are filled in automatically. Without resolution: positional decoding may fail if field count differs.` };
+    }
+    return { result: "partial", msg: `Multi-version gap (v${Math.min(w,r)} to v${Math.max(w,r)}). Avro requires TRANSITIVE compatibility mode in the Schema Registry to guarantee this works. Each intermediate schema must be compatible. Without resolution: FAIL.` };
+  }
+
+  return { result: "partial", msg: "Unknown format." };
+}
+
+// ============================================================================
+// RENDERING
+// ============================================================================
+
+function renderMatrix() {
+  const tbody = document.querySelector('#compat-matrix tbody');
+  tbody.innerHTML = '';
+  matrixData.forEach((row, ri) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="label">${row.change}</td>`;
+    ['json', 'msgpack', 'protobuf', 'avro'].forEach(fmt => {
+      const d = row[fmt];
+      const td = document.createElement('td');
+      td.className = d.result;
+      td.textContent = d.result.toUpperCase();
+      td.onclick = () => showDetail(row.change, fmt, d);
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+function showDetail(change, fmt, data) {
+  const panel = document.getElementById('matrix-detail');
+  const fmtNames = { json: "JSON", msgpack: "MessagePack", protobuf: "Protobuf", avro: "Avro" };
+  document.getElementById('detail-title').textContent = `${change} -- ${fmtNames[fmt]}`;
+  document.getElementById('detail-body').textContent = data.detail;
+  panel.className = 'detail-panel visible';
+}
+
+function renderTimeline() {
+  const container = document.getElementById('timeline');
+  container.innerHTML = '';
+  versionHistory.forEach((v, i) => {
+    const div = document.createElement('div');
+    div.className = 'timeline-item';
+    div.onclick = () => {
+      document.querySelectorAll('.timeline-item').forEach(el => el.classList.remove('active'));
+      div.classList.add('active');
+    };
+
+    let changesHtml = '';
+    if (v.changes.length > 0) {
+      changesHtml = '<div style="margin-top:8px;"><strong style="color:var(--text-dim);font-size:0.8em;">Changes from previous version:</strong></div>';
+      v.changes.forEach(c => {
+        const cls = c.type;
+        const prefix = c.type === 'added' ? '+' : c.type === 'removed' ? '-' : '~';
+        changesHtml += `<div class="change-item"><span class="${cls}">${prefix} ${c.text}</span></div>`;
+      });
+      changesHtml += `
+        <div class="format-compat">
+          <div class="format-card"><div class="fmt-name">JSON</div><div class="fmt-result ${compatClass(v.compat.json)}">${v.compat.json}</div></div>
+          <div class="format-card"><div class="fmt-name">MsgPack</div><div class="fmt-result ${compatClass(v.compat.msgpack)}">${v.compat.msgpack}</div></div>
+          <div class="format-card"><div class="fmt-name">Protobuf</div><div class="fmt-result ${compatClass(v.compat.protobuf)}">${v.compat.protobuf}</div></div>
+          <div class="format-card"><div class="fmt-name">Avro</div><div class="fmt-result ${compatClass(v.compat.avro)}">${v.compat.avro}</div></div>
+        </div>`;
+    }
+
+    div.innerHTML = `
+      <div class="version-tag">${v.version} -- ${v.title}</div>
+      <div class="version-date">${v.date}</div>
+      <div class="version-changes">
+        <div style="font-size:0.8em;color:var(--text-dim);margin-bottom:4px;">Fields: ${v.fields.join(', ')}</div>
+        ${changesHtml}
+      </div>
+    `;
+    container.appendChild(div);
+  });
+}
+
+function compatClass(val) {
+  if (val.startsWith("PASS")) return "fmt-pass";
+  if (val.startsWith("PARTIAL")) return "fmt-partial";
+  if (val.startsWith("FAIL")) return "fmt-fail";
+  return "";
+}
+
+function renderChecker() {
+  const w = document.getElementById('writer-version').value;
+  const r = document.getElementById('reader-version').value;
+  const fmt = document.getElementById('checker-format').value;
+  const { result, msg } = checkCompat(w, r, fmt);
+
+  const div = document.getElementById('checker-result');
+  div.className = `checker-result ${result}`;
+  const label = result === "pass" ? "COMPATIBLE" : result === "partial" ? "PARTIAL" : "INCOMPATIBLE";
+  const fmtNames = { json: "JSON", msgpack: "MessagePack", protobuf: "Protobuf", avro: "Avro" };
+  div.innerHTML = `<strong>${label}</strong>: Writer v${w} -> Reader v${r} (${fmtNames[fmt]})<br><br>${msg}`;
+}
+
+// ============================================================================
+// TAB SWITCHING
+// ============================================================================
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelector(`.tab-content#tab-${name}`).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ============================================================================
+// INIT
+// ============================================================================
+
+renderMatrix();
+renderTimeline();
+renderChecker();
+
+document.getElementById('writer-version').addEventListener('change', renderChecker);
+document.getElementById('reader-version').addEventListener('change', renderChecker);
+document.getElementById('checker-format').addEventListener('change', renderChecker);
+</script>
+</body>
+</html>
