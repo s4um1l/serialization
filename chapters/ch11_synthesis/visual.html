@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 11: Synthesis Dashboard -- FoodDash Wire</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg2: #161b22;
+    --bg3: #21262d;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text2: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --orange: #d29922;
+    --red: #f85149;
+    --purple: #bc8cff;
+    --pink: #f778ba;
+    --cyan: #39d2c0;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    padding: 20px;
+  }
+  h1 { color: var(--accent); font-size: 1.8rem; margin-bottom: 4px; }
+  h2 { color: var(--text); font-size: 1.3rem; margin: 30px 0 15px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  h3 { color: var(--text2); font-size: 1rem; margin: 15px 0 8px; }
+  .subtitle { color: var(--text2); margin-bottom: 20px; }
+  .dashboard { max-width: 1200px; margin: 0 auto; }
+
+  /* Tab navigation */
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
+  .tab {
+    padding: 8px 16px; background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 6px; cursor: pointer; color: var(--text2); font-size: 0.9rem;
+    transition: all 0.15s;
+  }
+  .tab:hover { color: var(--text); border-color: var(--text2); }
+  .tab.active { color: var(--accent); border-color: var(--accent); background: var(--bg3); }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* Cards */
+  .card {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 20px; margin-bottom: 20px;
+  }
+
+  /* Charts */
+  canvas { max-width: 100%; }
+
+  /* Toggle buttons */
+  .toggle-group { display: flex; gap: 4px; margin-bottom: 15px; }
+  .toggle-btn {
+    padding: 5px 12px; background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 4px; cursor: pointer; color: var(--text2); font-size: 0.8rem;
+  }
+  .toggle-btn.active { color: var(--accent); border-color: var(--accent); }
+
+  /* Slider */
+  .slider-container { margin: 15px 0; }
+  .slider-container label { display: block; margin-bottom: 5px; color: var(--text2); }
+  input[type="range"] {
+    width: 100%; appearance: none; height: 6px; border-radius: 3px;
+    background: var(--bg3); outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    appearance: none; width: 18px; height: 18px; border-radius: 50%;
+    background: var(--accent); cursor: pointer;
+  }
+  .slider-value { color: var(--accent); font-size: 1.2rem; font-weight: bold; }
+
+  /* Cost table */
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th { text-align: left; padding: 8px; color: var(--text2); border-bottom: 1px solid var(--border); }
+  td { padding: 8px; border-bottom: 1px solid var(--bg3); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr:hover td { background: var(--bg3); }
+  .highlight { color: var(--green); font-weight: bold; }
+  .warn { color: var(--orange); }
+
+  /* Radar chart checkboxes */
+  .format-selector { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; }
+  .format-selector label {
+    display: flex; align-items: center; gap: 4px; padding: 4px 10px;
+    background: var(--bg3); border-radius: 4px; font-size: 0.8rem; cursor: pointer;
+  }
+  .format-selector input[type="checkbox"] { accent-color: var(--accent); }
+
+  /* Journey timeline */
+  .timeline { position: relative; padding-left: 30px; }
+  .timeline::before {
+    content: ''; position: absolute; left: 12px; top: 0; bottom: 0;
+    width: 2px; background: var(--border);
+  }
+  .timeline-item {
+    position: relative; margin-bottom: 18px; cursor: pointer;
+    padding: 10px 15px; background: var(--bg3); border-radius: 6px;
+    border-left: 3px solid var(--border); transition: border-color 0.15s;
+  }
+  .timeline-item:hover { border-left-color: var(--accent); }
+  .timeline-item::before {
+    content: ''; position: absolute; left: -24px; top: 14px;
+    width: 10px; height: 10px; border-radius: 50%; background: var(--border);
+  }
+  .timeline-item:hover::before { background: var(--accent); }
+  .ch-label { color: var(--accent); font-weight: bold; font-size: 0.8rem; }
+  .ch-title { color: var(--text); font-size: 0.9rem; }
+  .ch-pain { color: var(--text2); font-size: 0.8rem; margin-top: 3px; }
+  .ch-format { color: var(--green); font-size: 0.8rem; }
+
+  /* Tie-together */
+  .tie-together {
+    background: linear-gradient(135deg, #161b22, #1a2332);
+    border: 1px solid var(--accent); border-radius: 8px;
+    padding: 25px; margin: 20px 0; font-style: italic;
+    color: var(--text); line-height: 1.8; font-size: 0.95rem;
+  }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="dashboard">
+
+<h1>FoodDash Wire: Synthesis Dashboard</h1>
+<p class="subtitle">Chapter 11 -- All formats, same data, real numbers. The grand finale.</p>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('bar')">Bar Charts</div>
+  <div class="tab" onclick="switchTab('radar')">Radar Compare</div>
+  <div class="tab" onclick="switchTab('cost')">Cost Calculator</div>
+  <div class="tab" onclick="switchTab('journey')">The Journey</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- BAR CHARTS PANEL -->
+<!-- ============================================================ -->
+<div id="panel-bar" class="panel active">
+  <div class="card">
+    <h3>Order Size</h3>
+    <div class="toggle-group">
+      <div class="toggle-btn active" onclick="switchSize('small', this)">Small</div>
+      <div class="toggle-btn" onclick="switchSize('typical', this)">Typical</div>
+      <div class="toggle-btn" onclick="switchSize('large', this)">Large</div>
+    </div>
+    <canvas id="barChart" height="400"></canvas>
+  </div>
+  <div class="card">
+    <h3>Metric Detail</h3>
+    <div class="toggle-group">
+      <div class="toggle-btn active" onclick="switchMetric('size', this)">Payload Size</div>
+      <div class="toggle-btn" onclick="switchMetric('encode', this)">Encode Speed</div>
+      <div class="toggle-btn" onclick="switchMetric('decode', this)">Decode Speed</div>
+      <div class="toggle-btn" onclick="switchMetric('memory', this)">Peak Memory</div>
+    </div>
+    <canvas id="detailChart" height="300"></canvas>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- RADAR COMPARE PANEL -->
+<!-- ============================================================ -->
+<div id="panel-radar" class="panel">
+  <div class="card">
+    <h3>Select 2-3 formats to compare (typical order)</h3>
+    <div class="format-selector" id="radarSelectors"></div>
+    <canvas id="radarChart" height="450"></canvas>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- COST CALCULATOR PANEL -->
+<!-- ============================================================ -->
+<div id="panel-cost" class="panel">
+  <div class="card">
+    <div class="slider-container">
+      <label>Messages per second: <span class="slider-value" id="msgRateLabel">1,000,000</span></label>
+      <input type="range" id="msgRateSlider" min="3" max="7" step="0.01" value="6"
+             oninput="updateCostTable()">
+      <div style="display:flex;justify-content:space-between;color:var(--text2);font-size:0.75rem;margin-top:2px;">
+        <span>1K</span><span>10K</span><span>100K</span><span>1M</span><span>10M</span>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <table id="costTable">
+      <thead>
+        <tr>
+          <th>Format</th><th style="text-align:right">Payload</th>
+          <th style="text-align:right">Enc Cores</th><th style="text-align:right">Dec Cores</th>
+          <th style="text-align:right">Total Cores</th><th style="text-align:right">BW (TB/day)</th>
+          <th style="text-align:right">Monthly $</th>
+        </tr>
+      </thead>
+      <tbody id="costBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- JOURNEY PANEL -->
+<!-- ============================================================ -->
+<div id="panel-journey" class="panel">
+  <div class="card">
+    <h3>The Journey: From Memory to Wire and Back</h3>
+    <div class="timeline" id="timeline"></div>
+  </div>
+
+  <div class="tie-together">
+    We started by trying to send a Python object over the wire and discovered that memory
+    isn't portable (Ch00). Plain text was simple but ambiguous and flat (Ch01). JSON gave us
+    structure and types but was verbose and slow (Ch02). Binary encodings like MessagePack
+    shrank the payload but had no schema contract (Ch03). Protobuf gave us schemas and
+    evolution but still required full deserialization (Ch04). FlatBuffers eliminated parsing
+    with zero-copy access (Ch05). Avro solved the data lake problem with writer/reader
+    schema resolution (Ch06). Cap'n Proto eliminated encoding entirely (Ch07). Compression
+    squeezed out remaining bytes (Ch08). Schema evolution rules kept everything from breaking
+    (Ch09). And the decision framework (Ch10) taught us that there's no single best format
+    -- only the right format for the right constraint. At 1 million messages per second,
+    the choice of serialization format is the difference between 4 servers and 40.
+  </div>
+</div>
+
+</div><!-- /dashboard -->
+
+<script>
+// ============================================================
+// DATA -- representative benchmark results (typical order)
+// These are approximate and will vary by machine
+// ============================================================
+const FORMATS = [
+  { name: "JSON (stdlib)",   color: "#f85149", size: {s:653,t:1661,l:22477}, enc: {s:3.2,t:6.6,l:54.0},  dec: {s:2.7,t:5.0,l:31.8},  mem: {s:4631,t:7935,l:56773} },
+  { name: "JSON (orjson)",   color: "#d29922", size: {s:593,t:1550,l:20835}, enc: {s:2.3,t:1.1,l:5.7},   dec: {s:3.0,t:1.8,l:13.9},  mem: {s:9604,t:23891,l:285078} },
+  { name: "MessagePack",     color: "#3fb950", size: {s:453,t:1289,l:16290}, enc: {s:3.5,t:2.9,l:10.6},  dec: {s:2.8,t:3.5,l:17.1},  mem: {s:1452,t:3311,l:27381} },
+  { name: "CBOR",            color: "#39d2c0", size: {s:453,t:1290,l:16290}, enc: {s:9.2,t:7.6,l:33.3},  dec: {s:4.1,t:6.3,l:29.0},  mem: {s:2886,t:6268,l:40145} },
+  { name: "Protobuf",        color: "#58a6ff", size: {s:91,t:715,l:13849},   enc: {s:4.5,t:16.1,l:79.1}, dec: {s:5.8,t:21.9,l:105.4}, mem: {s:2867,t:8664,l:47626} },
+  { name: "FlatBuffers",     color: "#bc8cff", size: {s:88,t:156,l:196},     enc: {s:4.0,t:5.2,l:5.2},   dec: {s:1.7,t:2.0,l:2.5},   mem: {s:546,t:670,l:773} },
+  { name: "Avro",            color: "#f778ba", size: {s:90,t:671,l:13605},   enc: {s:8.7,t:22.3,l:101.5},dec: {s:8.5,t:21.8,l:101.0}, mem: {s:1377,t:3376,l:27719} },
+  { name: "Cap'n Proto",     color: "#e3b341", size: {s:104,t:120,l:120},    enc: {s:2.0,t:2.4,l:2.4},   dec: {s:1.8,t:2.1,l:2.2},   mem: {s:546,t:623,l:627} },
+];
+
+const CHAPTERS = [
+  { ch:"Ch00", title:"Foundations", pain:"Memory is not portable -- bytes in RAM have no meaning on another machine", format:"Understanding bits, bytes, endianness" },
+  { ch:"Ch01", title:"Plain Text & CSV", pain:"Text is human-readable but ambiguous -- how do you encode a comma?", format:"Delimiters, escaping, no nested structures" },
+  { ch:"Ch02", title:"JSON", pain:"Need structure and types beyond flat text", format:"JSON: hierarchical, typed, universal -- but verbose" },
+  { ch:"Ch03", title:"MsgPack & CBOR", pain:"JSON is too large and too slow for high-throughput", format:"Binary encoding: 30-40% smaller, faster, still schema-less" },
+  { ch:"Ch04", title:"Protocol Buffers", pain:"No schema contract means silent breakage across services", format:"Protobuf: field numbers, schemas, evolution rules" },
+  { ch:"Ch05", title:"FlatBuffers", pain:"Protobuf requires full deserialization to read one field", format:"FlatBuffers: zero-copy access, read any field in O(1)" },
+  { ch:"Ch06", title:"Apache Avro", pain:"Data lake needs the schema to travel with the data", format:"Avro: schema-ordered, no tags, writer/reader resolution" },
+  { ch:"Ch07", title:"Cap'n Proto", pain:"Even FlatBuffers has an encoding step", format:"Cap'n Proto: the wire format IS the memory format" },
+  { ch:"Ch08", title:"Compression", pain:"Payloads are still larger than they need to be", format:"zstd, lz4, gzip: squeeze 50-90% more from any format" },
+  { ch:"Ch09", title:"Schema Evolution", pain:"Services deploy at different times -- schemas change", format:"Forward/backward compatibility rules for safe evolution" },
+  { ch:"Ch10", title:"Choosing a Format", pain:"So many formats -- how do you pick the right one?", format:"Decision framework: constraint-driven format selection" },
+  { ch:"Ch11", title:"Synthesis", pain:"The CTO asks: what does serialization actually cost us?", format:"Head-to-head benchmarks. Real numbers. This chapter." },
+];
+
+// ============================================================
+// TAB SWITCHING
+// ============================================================
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+  if (name === 'bar') { drawBarChart(); drawDetailChart(); }
+  if (name === 'radar') drawRadarChart();
+  if (name === 'cost') updateCostTable();
+}
+
+// ============================================================
+// BAR CHARTS (Canvas-based, no dependencies)
+// ============================================================
+let currentSize = 'typical';
+let currentMetric = 'size';
+const sizeKey = {small:'s',typical:'t',large:'l'};
+
+function switchSize(sz, el) {
+  currentSize = sz;
+  el.parentElement.querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  drawBarChart(); drawDetailChart();
+}
+function switchMetric(m, el) {
+  currentMetric = m;
+  el.parentElement.querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  drawDetailChart();
+}
+
+function drawBarChart() {
+  const canvas = document.getElementById('barChart');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = canvas.clientWidth * dpr;
+  canvas.height = 400 * dpr;
+  ctx.scale(dpr, dpr);
+  const W = canvas.clientWidth, H = 400;
+  ctx.clearRect(0,0,W,H);
+
+  const sk = sizeKey[currentSize];
+  const metrics = ['size','encode','decode','memory'];
+  const labels = ['Size (B)','Encode (us)','Decode (us)','Peak Mem (B)'];
+  const getVal = (f,m) => m==='size'?f.size[sk]:m==='encode'?f.enc[sk]:m==='decode'?f.dec[sk]:f.mem[sk];
+
+  // Grouped bar chart: each format has 4 bars (normalized)
+  const nf = FORMATS.length;
+  const nm = metrics.length;
+  const margin = {l:120, r:20, t:30, b:40};
+  const plotW = W - margin.l - margin.r;
+  const plotH = H - margin.t - margin.b;
+  const groupH = plotH / nf;
+  const barH = groupH / (nm + 1);
+
+  const metricColors = ['#f85149','#58a6ff','#3fb950','#d29922'];
+
+  // Normalize each metric to 0-1
+  const maxVals = metrics.map(m => Math.max(...FORMATS.map(f=>getVal(f,m))));
+
+  // Draw
+  ctx.font = '11px -apple-system, sans-serif';
+  FORMATS.forEach((f, fi) => {
+    const gy = margin.t + fi * groupH;
+    // Format label
+    ctx.fillStyle = '#8b949e';
+    ctx.textAlign = 'right';
+    ctx.fillText(f.name, margin.l - 8, gy + groupH/2 + 4);
+
+    metrics.forEach((m, mi) => {
+      const val = getVal(f, m);
+      const norm = maxVals[mi] > 0 ? val / maxVals[mi] : 0;
+      const by = gy + mi * barH + 2;
+      const bw = norm * plotW;
+
+      ctx.fillStyle = metricColors[mi];
+      ctx.globalAlpha = 0.8;
+      ctx.fillRect(margin.l, by, bw, barH - 2);
+      ctx.globalAlpha = 1;
+
+      // Value label
+      if (bw > 40) {
+        ctx.fillStyle = '#0d1117';
+        ctx.textAlign = 'left';
+        ctx.fillText(m==='size'? val.toLocaleString()+'B' : m==='memory'? val.toLocaleString()+'B' : val.toFixed(1)+'us', margin.l + bw - 2, by + barH/2 + 3);
+      }
+    });
+  });
+
+  // Legend
+  const ly = H - 15;
+  metrics.forEach((m,i) => {
+    const lx = margin.l + i * 140;
+    ctx.fillStyle = metricColors[i];
+    ctx.fillRect(lx, ly - 8, 12, 12);
+    ctx.fillStyle = '#8b949e';
+    ctx.textAlign = 'left';
+    ctx.fillText(labels[i], lx + 16, ly + 2);
+  });
+}
+
+function drawDetailChart() {
+  const canvas = document.getElementById('detailChart');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = canvas.clientWidth * dpr;
+  canvas.height = 300 * dpr;
+  ctx.scale(dpr, dpr);
+  const W = canvas.clientWidth, H = 300;
+  ctx.clearRect(0,0,W,H);
+
+  const sk = sizeKey[currentSize];
+  const m = currentMetric;
+  const getVal = (f) => m==='size'?f.size[sk]:m==='encode'?f.enc[sk]:m==='decode'?f.dec[sk]:f.mem[sk];
+  const unit = m==='size'?'bytes':m==='encode'?'us':m==='decode'?'us':'bytes';
+
+  const values = FORMATS.map(f => ({name:f.name, val:getVal(f), color:f.color}));
+  values.sort((a,b) => b.val - a.val);
+
+  const margin = {l:120, r:60, t:20, b:20};
+  const plotW = W - margin.l - margin.r;
+  const plotH = H - margin.t - margin.b;
+  const barH = plotH / values.length;
+  const maxVal = Math.max(...values.map(v=>v.val));
+
+  ctx.font = '11px -apple-system, sans-serif';
+  values.forEach((v, i) => {
+    const y = margin.t + i * barH;
+    const bw = maxVal > 0 ? (v.val / maxVal) * plotW : 0;
+
+    ctx.fillStyle = '#8b949e';
+    ctx.textAlign = 'right';
+    ctx.fillText(v.name, margin.l - 8, y + barH/2 + 4);
+
+    ctx.fillStyle = v.color;
+    ctx.globalAlpha = 0.85;
+    ctx.fillRect(margin.l, y + 3, bw, barH - 6);
+    ctx.globalAlpha = 1;
+
+    ctx.fillStyle = '#c9d1d9';
+    ctx.textAlign = 'left';
+    const label = v.val >= 1000 ? v.val.toLocaleString() : v.val.toFixed(1);
+    ctx.fillText(label + ' ' + unit, margin.l + bw + 6, y + barH/2 + 4);
+  });
+}
+
+// ============================================================
+// RADAR CHART
+// ============================================================
+function initRadarSelectors() {
+  const container = document.getElementById('radarSelectors');
+  FORMATS.forEach((f,i) => {
+    const lbl = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = i;
+    cb.checked = (i === 0 || i === 4 || i === 5); // JSON, Protobuf, FlatBuffers
+    cb.onchange = drawRadarChart;
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(' ' + f.name));
+    lbl.style.color = f.color;
+    container.appendChild(lbl);
+  });
+}
+
+function drawRadarChart() {
+  const canvas = document.getElementById('radarChart');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = canvas.clientWidth * dpr;
+  canvas.height = 450 * dpr;
+  ctx.scale(dpr, dpr);
+  const W = canvas.clientWidth, H = 450;
+  ctx.clearRect(0,0,W,H);
+
+  const selected = [...document.querySelectorAll('#radarSelectors input:checked')].map(cb => parseInt(cb.value));
+  if (selected.length === 0) return;
+
+  // Dimensions: size(inverted=smaller better), encode speed(inv), decode speed(inv), memory(inv), schema support
+  const dims = [
+    { label:'Small Size', get: f => 1 - f.size.t / 2000, best:'low' },
+    { label:'Fast Encode', get: f => 1 - Math.min(f.enc.t,25) / 25, best:'low' },
+    { label:'Fast Decode', get: f => 1 - Math.min(f.dec.t,25) / 25, best:'low' },
+    { label:'Low Memory', get: f => 1 - Math.min(f.mem.t,25000) / 25000, best:'low' },
+    { label:'Schema Safety', get: f => ['Protobuf','FlatBuffers','Avro',"Cap'n Proto"].includes(f.name)?1:0 },
+    { label:'Zero Copy', get: f => ['FlatBuffers',"Cap'n Proto"].includes(f.name)?1:0 },
+  ];
+
+  const cx = W/2, cy = H/2 - 10, R = Math.min(W,H)/2 - 60;
+  const nd = dims.length;
+  const angleStep = Math.PI * 2 / nd;
+
+  // Grid circles
+  for (let r = 0.2; r <= 1; r += 0.2) {
+    ctx.beginPath();
+    for (let i = 0; i <= nd; i++) {
+      const a = -Math.PI/2 + i * angleStep;
+      const x = cx + Math.cos(a) * R * r;
+      const y = cy + Math.sin(a) * R * r;
+      i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle = '#21262d';
+    ctx.stroke();
+  }
+
+  // Axis lines and labels
+  ctx.font = '11px -apple-system, sans-serif';
+  dims.forEach((d,i) => {
+    const a = -Math.PI/2 + i * angleStep;
+    const x = cx + Math.cos(a) * R;
+    const y = cy + Math.sin(a) * R;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = '#30363d';
+    ctx.stroke();
+
+    const lx = cx + Math.cos(a) * (R + 25);
+    const ly = cy + Math.sin(a) * (R + 25);
+    ctx.fillStyle = '#8b949e';
+    ctx.textAlign = Math.abs(Math.cos(a)) < 0.1 ? 'center' : Math.cos(a) > 0 ? 'left' : 'right';
+    ctx.fillText(d.label, lx, ly + 4);
+  });
+
+  // Plot each selected format
+  selected.forEach(fi => {
+    const f = FORMATS[fi];
+    ctx.beginPath();
+    dims.forEach((d,i) => {
+      const val = Math.max(0, Math.min(1, d.get(f)));
+      const a = -Math.PI/2 + i * angleStep;
+      const x = cx + Math.cos(a) * R * val;
+      const y = cy + Math.sin(a) * R * val;
+      i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.closePath();
+    ctx.strokeStyle = f.color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = f.color + '30';
+    ctx.fill();
+    ctx.lineWidth = 1;
+
+    // Dots
+    dims.forEach((d,i) => {
+      const val = Math.max(0, Math.min(1, d.get(f)));
+      const a = -Math.PI/2 + i * angleStep;
+      const x = cx + Math.cos(a) * R * val;
+      const y = cy + Math.sin(a) * R * val;
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI*2);
+      ctx.fillStyle = f.color;
+      ctx.fill();
+    });
+  });
+
+  // Legend
+  let ly = H - 25;
+  ctx.font = '12px -apple-system, sans-serif';
+  let lx = 20;
+  selected.forEach(fi => {
+    const f = FORMATS[fi];
+    ctx.fillStyle = f.color;
+    ctx.fillRect(lx, ly - 8, 12, 12);
+    ctx.textAlign = 'left';
+    ctx.fillText(f.name, lx + 16, ly + 2);
+    lx += ctx.measureText(f.name).width + 36;
+  });
+}
+
+// ============================================================
+// COST CALCULATOR
+// ============================================================
+function updateCostTable() {
+  const slider = document.getElementById('msgRateSlider');
+  const msgRate = Math.round(Math.pow(10, parseFloat(slider.value)));
+  document.getElementById('msgRateLabel').textContent = msgRate.toLocaleString();
+
+  const tbody = document.getElementById('costBody');
+  tbody.innerHTML = '';
+
+  let minCost = Infinity;
+  const rows = FORMATS.map(f => {
+    const encCores = f.enc.t * msgRate / 1e6;
+    const decCores = f.dec.t * msgRate / 1e6;
+    const totalCores = encCores + decCores;
+    const bwTbDay = f.size.t * msgRate * 86400 / (1024**4);
+    const bwCostMonth = (f.size.t * msgRate * 86400 * 30) / (1024**3) * 0.01;
+    const cpuCostMonth = totalCores * 30;
+    const monthlyCost = cpuCostMonth + bwCostMonth;
+    if (monthlyCost < minCost) minCost = monthlyCost;
+    return {f, encCores, decCores, totalCores, bwTbDay, monthlyCost};
+  });
+
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    const isMin = Math.abs(r.monthlyCost - minCost) < 1;
+    tr.innerHTML = `
+      <td style="color:${r.f.color}">${r.f.name}</td>
+      <td class="num">${r.f.size.t.toLocaleString()} B</td>
+      <td class="num">${r.encCores.toFixed(1)}</td>
+      <td class="num">${r.decCores.toFixed(1)}</td>
+      <td class="num">${r.totalCores.toFixed(1)}</td>
+      <td class="num">${r.bwTbDay.toFixed(2)}</td>
+      <td class="num ${isMin?'highlight':''}">\$${Math.round(r.monthlyCost).toLocaleString()}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ============================================================
+// JOURNEY TIMELINE
+// ============================================================
+function initTimeline() {
+  const container = document.getElementById('timeline');
+  CHAPTERS.forEach(ch => {
+    const item = document.createElement('div');
+    item.className = 'timeline-item';
+    item.innerHTML = `
+      <div class="ch-label">${ch.ch}</div>
+      <div class="ch-title">${ch.title}</div>
+      <div class="ch-pain">${ch.pain}</div>
+      <div class="ch-format">${ch.format}</div>
+    `;
+    container.appendChild(item);
+  });
+}
+
+// ============================================================
+// INIT
+// ============================================================
+window.addEventListener('DOMContentLoaded', () => {
+  initRadarSelectors();
+  initTimeline();
+  drawBarChart();
+  drawDetailChart();
+  updateCostTable();
+});
+window.addEventListener('resize', () => {
+  drawBarChart(); drawDetailChart();
+  if (document.getElementById('panel-radar').classList.contains('active')) drawRadarChart();
+});
+</script>
+</body>
+</html>
