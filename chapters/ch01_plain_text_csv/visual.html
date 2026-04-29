@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ch01 — CSV Visualization | FoodDash Wire</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 28px; color: #58a6ff; margin-bottom: 8px; }
+  h2 { font-size: 20px; color: #79c0ff; margin: 32px 0 12px 0; border-bottom: 1px solid #21262d; padding-bottom: 8px; }
+  h3 { font-size: 16px; color: #d2a8ff; margin: 20px 0 8px 0; }
+  p { margin: 8px 0; color: #8b949e; }
+  .subtitle { color: #8b949e; font-size: 14px; margin-bottom: 24px; }
+
+  .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin: 16px 0; }
+
+  /* Tree view */
+  .tree { padding-left: 0; }
+  .tree ul { padding-left: 24px; list-style: none; }
+  .tree li { position: relative; padding: 2px 0; }
+  .tree li::before {
+    content: '';
+    position: absolute;
+    left: -16px;
+    top: 0;
+    border-left: 1px solid #30363d;
+    height: 100%;
+  }
+  .tree li::after {
+    content: '';
+    position: absolute;
+    left: -16px;
+    top: 12px;
+    border-top: 1px solid #30363d;
+    width: 12px;
+  }
+  .tree > ul > li::before, .tree > ul > li::after { display: none; }
+  .tree-key { color: #79c0ff; }
+  .tree-str { color: #a5d6ff; }
+  .tree-num { color: #ffa657; }
+  .tree-bool { color: #ff7b72; }
+  .tree-null { color: #8b949e; font-style: italic; }
+  .tree-bracket { color: #8b949e; }
+  .tree-toggle { cursor: pointer; user-select: none; }
+  .tree-toggle:hover { color: #58a6ff; }
+
+  /* CSV display */
+  .csv-display {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 16px;
+    overflow-x: auto;
+    white-space: pre;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .csv-delimiter { color: #e3b341; font-weight: bold; }
+  .csv-quote { color: #3fb950; font-weight: bold; }
+  .csv-data { color: #e6edf3; }
+  .csv-header { color: #d2a8ff; }
+  .csv-problematic { color: #f85149; background: rgba(248,81,73,0.15); border-radius: 2px; }
+  .csv-newline { color: #484f58; }
+
+  /* Hex dump */
+  .hex-dump {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 16px;
+    overflow-x: auto;
+    font-size: 12px;
+    line-height: 1.8;
+  }
+  .hex-offset { color: #484f58; }
+  .hex-byte { color: #e6edf3; margin: 0 1px; }
+  .hex-byte.delimiter { color: #e3b341; font-weight: bold; }
+  .hex-byte.quote { color: #3fb950; font-weight: bold; }
+  .hex-byte.problematic { color: #f85149; font-weight: bold; background: rgba(248,81,73,0.15); border-radius: 2px; }
+  .hex-ascii { color: #8b949e; margin-left: 16px; }
+
+  /* Buttons */
+  .btn-row { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
+  button {
+    background: #21262d;
+    color: #e6edf3;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  button:hover { background: #30363d; border-color: #58a6ff; }
+  button.active { background: #1f6feb; border-color: #58a6ff; color: #fff; }
+
+  /* Comparison panel */
+  .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 800px) { .compare-grid { grid-template-columns: 1fr; } }
+  .compare-panel { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 16px; }
+  .compare-label { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+
+  /* Table */
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13px; }
+  th, td { border: 1px solid #30363d; padding: 6px 12px; text-align: left; }
+  th { background: #161b22; color: #d2a8ff; }
+  td { color: #e6edf3; }
+  .cell-ok { color: #3fb950; }
+  .cell-bad { color: #f85149; }
+
+  /* Animations */
+  .fade-in { animation: fadeIn 0.3s ease-in; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .flash { animation: flash 0.6s ease-out; }
+  @keyframes flash { 0% { background: rgba(88,166,255,0.3); } 100% { background: transparent; } }
+
+  /* Legend */
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 12px 0; font-size: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-swatch { width: 12px; height: 12px; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<h1>Chapter 01 — Plain Text / CSV</h1>
+<p class="subtitle">FoodDash Wire: When the simplest format hits its walls</p>
+
+<!-- ===== SECTION 1: Order as structured object ===== -->
+<h2>1. The FoodDash Order (Structured)</h2>
+<div class="section">
+  <p>This is how a FoodDash Order looks in memory — a tree of nested objects.</p>
+  <div class="tree" id="order-tree"></div>
+</div>
+
+<!-- ===== SECTION 2: CSV encoding + hex dump ===== -->
+<h2>2. The Same Order as CSV</h2>
+<div class="section">
+  <div class="legend">
+    <div class="legend-item"><div class="legend-swatch" style="background:#e3b341"></div> Delimiter (comma)</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#3fb950"></div> Quotes</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#e6edf3"></div> Data</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#d2a8ff"></div> Header</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#f85149"></div> Problematic</div>
+  </div>
+  <h3>CSV Text View</h3>
+  <div class="csv-display" id="csv-text"></div>
+  <h3>Hex Dump</h3>
+  <div class="hex-dump" id="csv-hex"></div>
+</div>
+
+<!-- ===== SECTION 3: Interactive Pain Points ===== -->
+<h2>3. Interactive Pain Points</h2>
+
+<div class="section">
+  <h3>Pain Point 1: Delimiter Collision</h3>
+  <p>What happens when a field contains a comma?</p>
+  <div class="btn-row">
+    <button id="btn-comma-safe" class="active" onclick="showCommaDemo('safe')">Safe description</button>
+    <button id="btn-comma-danger" onclick="showCommaDemo('danger')">Description WITH commas</button>
+    <button id="btn-comma-quoted" onclick="showCommaDemo('quoted')">Properly quoted</button>
+  </div>
+  <div class="compare-grid">
+    <div class="compare-panel">
+      <div class="compare-label">CSV Output</div>
+      <div class="csv-display" id="comma-csv"></div>
+    </div>
+    <div class="compare-panel">
+      <div class="compare-label">Parsed Fields</div>
+      <div id="comma-parsed"></div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Pain Point 2: Encoding Mismatch</h3>
+  <p>The same bytes decoded with different character encodings.</p>
+  <div class="btn-row">
+    <button id="btn-enc-utf8" class="active" onclick="showEncodingDemo('utf8')">UTF-8 (correct)</button>
+    <button id="btn-enc-latin1" onclick="showEncodingDemo('latin1')">Latin-1 (mojibake)</button>
+    <button id="btn-enc-shiftjis" onclick="showEncodingDemo('shiftjis')">Shift-JIS (mojibake)</button>
+  </div>
+  <div class="compare-grid">
+    <div class="compare-panel">
+      <div class="compare-label">Raw Bytes (Hex)</div>
+      <div class="hex-dump" id="enc-hex"></div>
+    </div>
+    <div class="compare-panel">
+      <div class="compare-label">Decoded Text</div>
+      <div class="csv-display" id="enc-text"></div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Pain Point 3: Nesting Lost</h3>
+  <p>Compare the original nested structure with the flat CSV representation.</p>
+  <div class="btn-row">
+    <button id="btn-nest-nested" class="active" onclick="showNestingDemo('nested')">Nested (original)</button>
+    <button id="btn-nest-flat" onclick="showNestingDemo('flat')">Flattened (CSV)</button>
+  </div>
+  <div id="nesting-display"></div>
+</div>
+
+<div class="section">
+  <h3>Pain Point 4: Type Ambiguity</h3>
+  <p>CSV treats everything as a string. The type is lost.</p>
+  <table>
+    <thead>
+      <tr><th>Python Value</th><th>Python Type</th><th>CSV Text</th><th>Decoded Type</th><th>Fidelity</th></tr>
+    </thead>
+    <tbody id="type-table"></tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h3>Pain Point 5: No Schema</h3>
+  <p>Adding a column shifts all downstream indices.</p>
+  <div class="btn-row">
+    <button id="btn-schema-v1" class="active" onclick="showSchemaDemo('v1')">Schema V1 (4 columns)</button>
+    <button id="btn-schema-v2" onclick="showSchemaDemo('v2')">Schema V2 (5 columns, email added)</button>
+    <button id="btn-schema-break" onclick="showSchemaDemo('break')">V1 reader + V2 data (BROKEN)</button>
+  </div>
+  <div class="csv-display" id="schema-csv"></div>
+  <div id="schema-result" style="margin-top:12px"></div>
+</div>
+
+<!-- ===== SECTION 4: Trade-offs ===== -->
+<h2>4. Trade-offs Summary</h2>
+<div class="section">
+  <table>
+    <thead><tr><th>Property</th><th>CSV</th></tr></thead>
+    <tbody>
+      <tr><td>Human-readable</td><td class="cell-ok">Yes</td></tr>
+      <tr><td>Nesting</td><td class="cell-bad">No</td></tr>
+      <tr><td>Types</td><td class="cell-bad">No</td></tr>
+      <tr><td>Schema</td><td class="cell-bad">No</td></tr>
+      <tr><td>Binary data</td><td class="cell-bad">No</td></tr>
+      <tr><td>Encoding defined</td><td class="cell-bad">No</td></tr>
+      <tr><td>Encode speed</td><td class="cell-ok">Fast</td></tr>
+      <tr><td>Streaming</td><td class="cell-ok">Yes (line-by-line)</td></tr>
+      <tr><td>Schema evolution</td><td class="cell-bad">No</td></tr>
+      <tr><td>Tooling</td><td class="cell-ok">Excellent</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+// ============================================================
+// Data
+// ============================================================
+const ORDER = {
+  id: "ord00002",
+  platform_transaction_id: 123456789,
+  customer: {
+    id: "cust0001",
+    name: "Alice Nakamura",
+    email: "alice@example.com",
+    phone: "+1-555-0101",
+    address: "350 5th Ave, New York, NY 10118",
+    location: { latitude: 40.748817, longitude: -73.985428 }
+  },
+  restaurant_id: "rest0001",
+  items: [
+    {
+      menu_item: {
+        id: "menu0001",
+        name: "Classic Smash Burger",
+        price_cents: 1299,
+        description: "Two 4oz patties, American cheese, pickles, onion, secret sauce",
+        category: "main",
+        is_vegetarian: false,
+        allergens: ["gluten", "dairy"]
+      },
+      quantity: 2,
+      special_instructions: "No pickles on one"
+    },
+    {
+      menu_item: {
+        id: "menu0003",
+        name: "Truffle Fries",
+        price_cents: 899,
+        description: "Hand-cut fries, truffle oil, parmesan, fresh herbs",
+        category: "appetizer",
+        is_vegetarian: true,
+        allergens: ["dairy"]
+      },
+      quantity: 1,
+      special_instructions: ""
+    },
+    {
+      menu_item: {
+        id: "menu0004",
+        name: "Matcha Milkshake",
+        price_cents: 799,
+        description: "Organic matcha, vanilla ice cream, oat milk",
+        category: "drink",
+        is_vegetarian: true,
+        allergens: ["dairy"]
+      },
+      quantity: 2,
+      special_instructions: ""
+    }
+  ],
+  status: "en_route",
+  payment_method: "credit_card",
+  driver_id: "driv0001",
+  delivery_notes: "Ring doorbell twice, leave at door",
+  promo_code: "SAVE20",
+  tip_cents: 500,
+  created_at: 1700000000.0,
+  updated_at: 1700000300.0,
+  estimated_delivery_minutes: 25,
+  metadata: {
+    source: "mobile_app",
+    app_version: "4.2.1",
+    session_id: "sess_abc123"
+  }
+};
+
+const CSV_HEADER = [
+  "order_id","platform_transaction_id","customer_id","customer_name",
+  "customer_email","customer_phone","customer_address","restaurant_id",
+  "status","payment_method","driver_id","delivery_notes","promo_code",
+  "tip_cents","created_at","updated_at","estimated_delivery_minutes",
+  "item_menu_id","item_name","item_price_cents","item_description",
+  "item_category","item_is_vegetarian","item_quantity","item_special_instructions"
+];
+
+// ============================================================
+// CSV encode helpers
+// ============================================================
+function csvEncodeField(f) {
+  const s = String(f);
+  if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function csvEncodeRow(fields) {
+  return fields.map(csvEncodeField).join(',');
+}
+
+function flattenOrderToRows() {
+  const rows = [];
+  for (const oi of ORDER.items) {
+    const mi = oi.menu_item;
+    rows.push([
+      ORDER.id, String(ORDER.platform_transaction_id),
+      ORDER.customer.id, ORDER.customer.name,
+      ORDER.customer.email, ORDER.customer.phone,
+      ORDER.customer.address, ORDER.restaurant_id,
+      ORDER.status, ORDER.payment_method,
+      ORDER.driver_id || "", ORDER.delivery_notes || "",
+      ORDER.promo_code || "", String(ORDER.tip_cents),
+      String(ORDER.created_at), String(ORDER.updated_at),
+      String(ORDER.estimated_delivery_minutes),
+      mi.id, mi.name, String(mi.price_cents),
+      mi.description, mi.category,
+      String(mi.is_vegetarian), String(oi.quantity),
+      oi.special_instructions
+    ]);
+  }
+  return rows;
+}
+
+// ============================================================
+// Render tree view
+// ============================================================
+function renderTree(obj, depth) {
+  if (depth === undefined) depth = 0;
+  const ul = document.createElement('ul');
+
+  if (Array.isArray(obj)) {
+    obj.forEach((item, idx) => {
+      const li = document.createElement('li');
+      if (typeof item === 'object' && item !== null) {
+        li.innerHTML = `<span class="tree-bracket">[${idx}]</span>`;
+        li.appendChild(renderTree(item, depth + 1));
+      } else {
+        li.innerHTML = `<span class="tree-bracket">[${idx}]</span> ${renderValue(item)}`;
+      }
+      ul.appendChild(li);
+    });
+  } else if (typeof obj === 'object' && obj !== null) {
+    for (const [key, val] of Object.entries(obj)) {
+      const li = document.createElement('li');
+      if (typeof val === 'object' && val !== null) {
+        li.innerHTML = `<span class="tree-key">${key}</span>: <span class="tree-bracket">${Array.isArray(val) ? `[${val.length}]` : '{}'}</span>`;
+        li.appendChild(renderTree(val, depth + 1));
+      } else {
+        li.innerHTML = `<span class="tree-key">${key}</span>: ${renderValue(val)}`;
+      }
+      ul.appendChild(li);
+    }
+  }
+  return ul;
+}
+
+function renderValue(v) {
+  if (v === null || v === undefined) return '<span class="tree-null">null</span>';
+  if (typeof v === 'string') return `<span class="tree-str">"${escapeHtml(v)}"</span>`;
+  if (typeof v === 'number') return `<span class="tree-num">${v}</span>`;
+  if (typeof v === 'boolean') return `<span class="tree-bool">${v}</span>`;
+  return `<span class="tree-str">${escapeHtml(String(v))}</span>`;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ============================================================
+// Render CSV with syntax highlighting
+// ============================================================
+function renderCsvHighlighted(headerFields, dataRows, isHeader) {
+  let html = '';
+  // Header
+  html += renderCsvLineHighlighted(headerFields, true) + '<span class="csv-newline">\\r\\n</span>\n';
+  for (const row of dataRows) {
+    html += renderCsvLineHighlighted(row, false) + '<span class="csv-newline">\\r\\n</span>\n';
+  }
+  return html;
+}
+
+function renderCsvLineHighlighted(fields, isHeader) {
+  let parts = [];
+  for (let i = 0; i < fields.length; i++) {
+    const raw = String(fields[i]);
+    const encoded = csvEncodeField(raw);
+    const cls = isHeader ? 'csv-header' : 'csv-data';
+
+    if (encoded.startsWith('"')) {
+      const inner = encoded.slice(1, -1);
+      parts.push(`<span class="csv-quote">"</span><span class="${cls}">${escapeHtml(inner)}</span><span class="csv-quote">"</span>`);
+    } else {
+      parts.push(`<span class="${cls}">${escapeHtml(encoded)}</span>`);
+    }
+    if (i < fields.length - 1) {
+      parts.push('<span class="csv-delimiter">,</span>');
+    }
+  }
+  return parts.join('');
+}
+
+// ============================================================
+// Hex dump
+// ============================================================
+function renderHexDump(text, highlightDelimiters) {
+  const bytes = new TextEncoder().encode(text);
+  let html = '';
+  for (let offset = 0; offset < bytes.length; offset += 16) {
+    const chunk = bytes.slice(offset, offset + 16);
+    let hexPart = '';
+    let asciiPart = '';
+    for (let i = 0; i < 16; i++) {
+      if (i < chunk.length) {
+        const b = chunk[i];
+        let cls = 'hex-byte';
+        if (highlightDelimiters) {
+          if (b === 0x2C) cls += ' delimiter';
+          else if (b === 0x22) cls += ' quote';
+          else if (b > 0x7F) cls += ' problematic';
+        }
+        hexPart += `<span class="${cls}">${b.toString(16).padStart(2,'0').toUpperCase()}</span> `;
+        const ch = (b >= 32 && b < 127) ? String.fromCharCode(b) : '.';
+        asciiPart += escapeHtml(ch);
+      } else {
+        hexPart += '   ';
+      }
+      if (i === 7) hexPart += ' ';
+    }
+    html += `<span class="hex-offset">${offset.toString(16).padStart(8,'0')}</span>  ${hexPart} <span class="hex-ascii">${asciiPart}</span>\n`;
+  }
+  return html;
+}
+
+// ============================================================
+// Initialize section 1: tree view
+// ============================================================
+document.getElementById('order-tree').appendChild(renderTree(ORDER));
+
+// ============================================================
+// Initialize section 2: CSV + hex
+// ============================================================
+const dataRows = flattenOrderToRows();
+document.getElementById('csv-text').innerHTML = renderCsvHighlighted(CSV_HEADER, dataRows);
+
+const fullCsv = csvEncodeRow(CSV_HEADER) + '\r\n' + dataRows.map(r => csvEncodeRow(r)).join('\r\n') + '\r\n';
+document.getElementById('csv-hex').innerHTML = renderHexDump(fullCsv.slice(0, 256) + '...', true);
+
+// ============================================================
+// Pain Point 1: Delimiter collision
+// ============================================================
+function showCommaDemo(mode) {
+  document.querySelectorAll('#btn-comma-safe,#btn-comma-danger,#btn-comma-quoted').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-comma-' + mode.replace('danger','danger').replace('safe','safe').replace('quoted','quoted')).classList.add('active');
+
+  const safeDesc = "Hand-cut fries with truffle oil";
+  const dangerDesc = "Two 4oz patties, American cheese, pickles, onion, secret sauce";
+  const fields_base = ["menu0001", "Classic Smash Burger", "1299", null, "main"];
+
+  let csvLine, parsedFields, parseMethod;
+
+  if (mode === 'safe') {
+    fields_base[3] = safeDesc;
+    csvLine = fields_base.join(',');
+    parsedFields = csvLine.split(',');
+    parseMethod = 'split(",") -- works fine';
+  } else if (mode === 'danger') {
+    fields_base[3] = dangerDesc;
+    csvLine = fields_base.join(',');
+    parsedFields = csvLine.split(',');
+    parseMethod = 'split(",") -- BROKEN! Expected 5 fields, got ' + parsedFields.length;
+  } else {
+    fields_base[3] = dangerDesc;
+    csvLine = csvEncodeRow(fields_base);
+    // proper parse
+    parsedFields = csvParseLine(csvLine);
+    parseMethod = 'RFC 4180 parser -- 5 fields, correct';
+  }
+
+  let csvHtml = '';
+  for (let i = 0; i < csvLine.length; i++) {
+    const ch = csvLine[i];
+    if (ch === ',') {
+      if (mode === 'danger' && i > csvLine.indexOf('patties')) {
+        csvHtml += `<span class="csv-problematic">${escapeHtml(ch)}</span>`;
+      } else {
+        csvHtml += `<span class="csv-delimiter">${escapeHtml(ch)}</span>`;
+      }
+    } else if (ch === '"') {
+      csvHtml += `<span class="csv-quote">${escapeHtml(ch)}</span>`;
+    } else {
+      csvHtml += `<span class="csv-data">${escapeHtml(ch)}</span>`;
+    }
+  }
+  document.getElementById('comma-csv').innerHTML = csvHtml;
+
+  let parsedHtml = `<p style="color:#8b949e;font-size:12px;margin-bottom:8px">${parseMethod}</p>`;
+  parsedHtml += '<table><thead><tr><th>Index</th><th>Value</th></tr></thead><tbody>';
+  for (let i = 0; i < parsedFields.length; i++) {
+    const expected = i < 5;
+    const cls = (mode === 'danger' && i >= 3 && i < parsedFields.length - 1) ? 'cell-bad' : (expected ? '' : 'cell-bad');
+    parsedHtml += `<tr><td>${i}</td><td class="${cls}">${escapeHtml(parsedFields[i])}</td></tr>`;
+  }
+  parsedHtml += '</tbody></table>';
+  document.getElementById('comma-parsed').innerHTML = parsedHtml;
+}
+
+function csvParseLine(line) {
+  const fields = []; let current = ''; let inQuoted = false; let i = 0;
+  while (i < line.length) {
+    const ch = line[i];
+    if (inQuoted) {
+      if (ch === '"') {
+        if (i + 1 < line.length && line[i+1] === '"') { current += '"'; i += 2; continue; }
+        else { inQuoted = false; i++; continue; }
+      }
+      current += ch; i++;
+    } else {
+      if (ch === '"') { inQuoted = true; i++; }
+      else if (ch === ',') { fields.push(current); current = ''; i++; }
+      else { current += ch; i++; }
+    }
+  }
+  fields.push(current);
+  return fields;
+}
+
+showCommaDemo('safe');
+
+// ============================================================
+// Pain Point 2: Encoding mismatch
+// ============================================================
+const restaurantName = "B\u00F6rg\u00E9r Palace \uD83C\uDF54";
+const utf8Bytes = new TextEncoder().encode(restaurantName);
+
+// Precomputed Latin-1 interpretation of those UTF-8 bytes
+const latin1Map = {};
+for (let i = 0; i < 256; i++) latin1Map[i] = String.fromCharCode(i);
+
+function bytesToLatin1(bytes) {
+  return Array.from(bytes).map(b => latin1Map[b]).join('');
+}
+
+// Simulate Shift-JIS by replacing multi-byte with ?
+function bytesToFakeShiftJIS(bytes) {
+  let result = '';
+  let i = 0;
+  while (i < bytes.length) {
+    const b = bytes[i];
+    if (b < 0x80) { result += String.fromCharCode(b); i++; }
+    else if (b >= 0xC0 && b < 0xE0) { result += '\uFFFD'; i += 2; }
+    else if (b >= 0xE0 && b < 0xF0) { result += '\uFFFD'; i += 3; }
+    else if (b >= 0xF0) { result += '\uFFFD'; i += 4; }
+    else { result += '\uFFFD'; i++; }
+  }
+  return result;
+}
+
+function showEncodingDemo(enc) {
+  document.querySelectorAll('#btn-enc-utf8,#btn-enc-latin1,#btn-enc-shiftjis').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-enc-' + enc).classList.add('active');
+
+  // Hex view always shows the same bytes, but highlights differently
+  let hexHtml = '';
+  for (let offset = 0; offset < utf8Bytes.length; offset += 16) {
+    const chunk = utf8Bytes.slice(offset, offset + 16);
+    let hexPart = '', asciiPart = '';
+    for (let i = 0; i < 16; i++) {
+      if (i < chunk.length) {
+        const b = chunk[i];
+        let cls = 'hex-byte';
+        if (enc !== 'utf8' && b > 0x7F) cls += ' problematic';
+        hexPart += `<span class="${cls}">${b.toString(16).padStart(2,'0').toUpperCase()}</span> `;
+        asciiPart += (b >= 32 && b < 127) ? escapeHtml(String.fromCharCode(b)) : '.';
+      } else { hexPart += '   '; }
+      if (i === 7) hexPart += ' ';
+    }
+    hexHtml += `<span class="hex-offset">${offset.toString(16).padStart(8,'0')}</span>  ${hexPart} <span class="hex-ascii">${asciiPart}</span>\n`;
+  }
+  document.getElementById('enc-hex').innerHTML = hexHtml;
+
+  let decoded;
+  if (enc === 'utf8') decoded = restaurantName;
+  else if (enc === 'latin1') decoded = bytesToLatin1(utf8Bytes);
+  else decoded = bytesToFakeShiftJIS(utf8Bytes);
+
+  const label = enc === 'utf8' ? '(correct)' : '(MOJIBAKE)';
+  const cls = enc === 'utf8' ? 'csv-data' : 'csv-problematic';
+  document.getElementById('enc-text').innerHTML =
+    `<span style="color:#8b949e">Encoding: ${enc.toUpperCase()} ${label}</span>\n\n<span class="${cls}">${escapeHtml(decoded)}</span>`;
+}
+
+showEncodingDemo('utf8');
+
+// ============================================================
+// Pain Point 3: Nesting
+// ============================================================
+function showNestingDemo(mode) {
+  document.querySelectorAll('#btn-nest-nested,#btn-nest-flat').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-nest-' + mode).classList.add('active');
+
+  const el = document.getElementById('nesting-display');
+
+  if (mode === 'nested') {
+    let html = '<div class="section fade-in" style="margin:12px 0">';
+    html += `<div style="color:#79c0ff;font-weight:bold">Order #${ORDER.id}</div>`;
+    html += `<div style="padding-left:20px;border-left:2px solid #30363d;margin:8px 0">`;
+    html += `<div><span class="tree-key">customer</span>: ${ORDER.customer.name}</div>`;
+    html += `<div><span class="tree-key">status</span>: ${ORDER.status}</div>`;
+    html += `<div><span class="tree-key">items</span>: [${ORDER.items.length}]</div>`;
+    for (const oi of ORDER.items) {
+      html += `<div style="padding-left:20px;border-left:2px solid #1f6feb;margin:4px 0">`;
+      html += `<span class="tree-num">${oi.quantity}x</span> <span class="tree-str">${escapeHtml(oi.menu_item.name)}</span>`;
+      html += ` <span style="color:#8b949e">@ ${oi.menu_item.price_cents}c</span>`;
+      if (oi.special_instructions) html += `<div style="color:#8b949e;font-size:12px">note: "${escapeHtml(oi.special_instructions)}"</div>`;
+      html += `<div style="color:#8b949e;font-size:12px">allergens: [${oi.menu_item.allergens.join(', ')}]</div>`;
+      html += `</div>`;
+    }
+    html += `<div><span class="tree-key">metadata</span>: {${Object.keys(ORDER.metadata).length} keys}</div>`;
+    html += `</div></div>`;
+    html += `<p style="color:#3fb950">Structure preserved. Nesting visible. Allergens intact.</p>`;
+    el.innerHTML = html;
+  } else {
+    const rows = flattenOrderToRows();
+    let html = '<div class="fade-in" style="overflow-x:auto"><table><thead><tr>';
+    const showCols = [0, 3, 4, 17, 18, 19, 23]; // subset of columns
+    const colNames = ['order_id','customer_name','customer_email','item_menu_id','item_name','item_price_cents','item_quantity'];
+    for (const c of colNames) html += `<th>${c}</th>`;
+    html += '</tr></thead><tbody>';
+    for (const row of rows) {
+      html += '<tr>';
+      for (const ci of showCols) {
+        const val = row[ci] || '';
+        const isDuplicate = ci < 17; // order-level field
+        const style = isDuplicate ? 'color:#e3b341;font-style:italic' : '';
+        html += `<td style="${style}">${escapeHtml(val)}</td>`;
+      }
+      html += '</tr>';
+    }
+    html += '</tbody></table></div>';
+    html += `<p style="color:#f85149;margin-top:12px">Yellow/italic = duplicated order-level fields (${rows.length - 1} redundant copies each).</p>`;
+    html += `<p style="color:#f85149">LOST: allergens, thumbnail_png, metadata, customer.location, nesting structure.</p>`;
+    el.innerHTML = html;
+  }
+}
+
+showNestingDemo('nested');
+
+// ============================================================
+// Pain Point 4: Type ambiguity
+// ============================================================
+(function() {
+  const types = [
+    ['42', 'str', '42', 'str', true],
+    ['42 (integer)', 'int', '42', 'str', false],
+    ['42.0', 'float', '42.0', 'str', false],
+    ['true', 'bool', 'True', 'str', false],
+    ['"True"', 'str', 'True', 'str', true],
+    ['None', 'NoneType', '', 'str', false],
+    ['""', 'str', '', 'str', false],
+  ];
+  let html = '';
+  for (const [val, pyType, csvText, decType, ok] of types) {
+    const cls = ok ? 'cell-ok' : 'cell-bad';
+    const label = ok ? 'OK' : 'LOST';
+    html += `<tr><td>${escapeHtml(val)}</td><td>${pyType}</td><td><code>${escapeHtml(csvText)}</code></td><td>${decType}</td><td class="${cls}">${label}</td></tr>`;
+  }
+  document.getElementById('type-table').innerHTML = html;
+})();
+
+// ============================================================
+// Pain Point 5: No schema
+// ============================================================
+function showSchemaDemo(mode) {
+  document.querySelectorAll('#btn-schema-v1,#btn-schema-v2,#btn-schema-break').forEach(b => b.classList.remove('active'));
+  if (mode === 'v1') document.getElementById('btn-schema-v1').classList.add('active');
+  else if (mode === 'v2') document.getElementById('btn-schema-v2').classList.add('active');
+  else document.getElementById('btn-schema-break').classList.add('active');
+
+  const v1Header = ['order_id','customer_name','item_name','price_cents'];
+  const v1Data   = ['ord001','Alice','Burger','1299'];
+  const v2Header = ['order_id','customer_name','customer_email','item_name','price_cents'];
+  const v2Data   = ['ord001','Alice','alice@ex.com','Burger','1299'];
+
+  let csvHtml = '', resultHtml = '';
+
+  if (mode === 'v1') {
+    csvHtml = renderCsvLineHighlighted(v1Header, true) + '\n' + renderCsvLineHighlighted(v1Data, false);
+    resultHtml = '<p style="color:#3fb950">4 columns. V1 reader parses correctly.</p>';
+  } else if (mode === 'v2') {
+    csvHtml = renderCsvLineHighlighted(v2Header, true) + '\n' + renderCsvLineHighlighted(v2Data, false);
+    resultHtml = '<p style="color:#3fb950">5 columns. V2 reader parses correctly.</p>';
+  } else {
+    csvHtml = '<span style="color:#8b949e">V2 data:</span>\n' + renderCsvLineHighlighted(v2Header, true) + '\n' + renderCsvLineHighlighted(v2Data, false);
+    resultHtml = '<table class="fade-in"><thead><tr><th>V1 Column</th><th>Expected</th><th>Got</th><th>Status</th></tr></thead><tbody>';
+    for (let i = 0; i < v1Header.length; i++) {
+      const expected = v1Data[i];
+      const got = v2Data[i];
+      const ok = expected === got;
+      resultHtml += `<tr><td>${v1Header[i]}</td><td>${expected}</td><td class="${ok?'':'cell-bad'}">${got}</td><td class="${ok?'cell-ok':'cell-bad'}">${ok?'OK':'WRONG'}</td></tr>`;
+    }
+    resultHtml += '</tbody></table>';
+    resultHtml += '<p style="color:#f85149;margin-top:8px">Column indices shifted. V1 reader silently reads wrong data.</p>';
+  }
+
+  document.getElementById('schema-csv').innerHTML = csvHtml;
+  document.getElementById('schema-result').innerHTML = resultHtml;
+}
+
+showSchemaDemo('v1');
+</script>
+</body>
+</html>
