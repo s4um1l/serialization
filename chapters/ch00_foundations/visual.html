@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ch00: Memory Layout Visualizer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    background: #0d1117;
+    color: #e6edf3;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  h1 {
+    text-align: center;
+    padding: 24px 16px 8px;
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: #58a6ff;
+  }
+  .subtitle {
+    text-align: center;
+    color: #8b949e;
+    font-size: 0.85rem;
+    margin-bottom: 16px;
+  }
+
+  /* Controls bar */
+  .controls {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    padding: 0 16px 16px;
+    flex-wrap: wrap;
+  }
+  .control-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 6px 12px;
+  }
+  .control-group label {
+    color: #8b949e;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .control-group select, .control-group button {
+    background: #21262d;
+    color: #e6edf3;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+  .control-group select:hover, .control-group button:hover {
+    border-color: #58a6ff;
+  }
+  .control-group button.active {
+    background: #1f6feb;
+    border-color: #1f6feb;
+  }
+
+  /* Main layout */
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    padding: 0 16px 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) {
+    .main { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .panel-header {
+    background: #21262d;
+    padding: 10px 16px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #58a6ff;
+    border-bottom: 1px solid #30363d;
+  }
+  .panel-body {
+    padding: 12px 16px;
+    overflow-x: auto;
+  }
+
+  /* Object tree */
+  .tree-node {
+    padding: 3px 0;
+    cursor: pointer;
+    transition: background 0.15s;
+    border-radius: 4px;
+    padding: 4px 8px;
+    margin: 1px 0;
+  }
+  .tree-node:hover {
+    background: #1c2128;
+  }
+  .tree-node.selected {
+    background: #1f6feb33;
+    outline: 1px solid #1f6feb;
+  }
+  .tree-indent { display: inline-block; width: 20px; }
+  .tree-key { color: #d2a8ff; }
+  .tree-type { color: #8b949e; font-size: 0.75rem; }
+  .tree-val-str { color: #a5d6ff; }
+  .tree-val-int { color: #79c0ff; }
+  .tree-val-float { color: #56d364; }
+  .tree-val-bool { color: #f0883e; }
+  .tree-val-enum { color: #f778ba; }
+  .tree-val-none { color: #8b949e; font-style: italic; }
+  .tree-bracket { color: #8b949e; }
+  .tree-expand { display: inline-block; width: 16px; color: #8b949e; user-select: none; }
+
+  /* Hex dump */
+  .hex-table {
+    font-size: 0.78rem;
+    line-height: 1.6;
+    white-space: pre;
+  }
+  .hex-offset { color: #8b949e; }
+  .hex-byte {
+    display: inline-block;
+    width: 24px;
+    text-align: center;
+    border-radius: 2px;
+    transition: background 0.15s, color 0.15s;
+  }
+  .hex-byte.highlight {
+    font-weight: bold;
+  }
+  .hex-ascii { color: #8b949e; margin-left: 8px; }
+  .hex-ascii .highlight { font-weight: bold; }
+  .hex-separator { display: inline-block; width: 8px; }
+
+  /* Type colors for hex highlighting */
+  .hl-str    { background: #1f3a5f; color: #a5d6ff; }
+  .hl-int    { background: #1a3a2a; color: #79c0ff; }
+  .hl-float  { background: #1a3a1a; color: #56d364; }
+  .hl-bool   { background: #3a2a1a; color: #f0883e; }
+  .hl-enum   { background: #3a1a2a; color: #f778ba; }
+  .hl-ptr    { background: #3a1a1a; color: #f85149; }
+  .hl-meta   { background: #2a2a1a; color: #e3b341; }
+  .hl-pad    { background: #1a1a1a; color: #484f58; }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 12px 16px;
+    border-top: 1px solid #30363d;
+    font-size: 0.75rem;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .legend-swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+  }
+
+  /* Info box */
+  .info-box {
+    margin: 16px;
+    padding: 12px 16px;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    color: #8b949e;
+    line-height: 1.5;
+    max-width: 1400px;
+    margin: 0 auto 24px;
+    padding: 12px 32px;
+  }
+  .info-box strong { color: #e6edf3; }
+  .info-box code {
+    background: #21262d;
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: #79c0ff;
+    font-size: 0.78rem;
+  }
+
+  /* Stats bar */
+  .stats {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    padding: 8px 16px 16px;
+    flex-wrap: wrap;
+  }
+  .stat {
+    text-align: center;
+  }
+  .stat-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #58a6ff;
+  }
+  .stat-label {
+    font-size: 0.7rem;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Chapter 00: Memory Layout Visualizer</h1>
+<p class="subtitle">Click a field to highlight its bytes. Toggle layout and endianness to see portability problems.</p>
+
+<div class="controls">
+  <div class="control-group">
+    <label>Layout</label>
+    <select id="layoutSelect">
+      <option value="python">Python memory</option>
+      <option value="c">C struct</option>
+      <option value="go">Go struct</option>
+    </select>
+  </div>
+  <div class="control-group">
+    <label>Endianness</label>
+    <button id="btnBig" class="active" onclick="setEndian('big')">Big-endian</button>
+    <button id="btnLittle" onclick="setEndian('little')">Little-endian</button>
+  </div>
+</div>
+
+<div class="stats" id="statsBar"></div>
+
+<div class="main">
+  <div class="panel">
+    <div class="panel-header">Python Order Object (field tree)</div>
+    <div class="panel-body" id="treePanel"></div>
+  </div>
+  <div class="panel">
+    <div class="panel-header">Raw Bytes (<span id="layoutLabel">Python memory</span>)</div>
+    <div class="panel-body" id="hexPanel"></div>
+    <div class="legend" id="legend"></div>
+  </div>
+</div>
+
+<div class="info-box" id="infoBox">
+  <strong>How to read this:</strong> The left panel shows the logical structure of a FoodDash Order object.
+  The right panel shows how those fields are laid out as raw bytes in the selected format.
+  Click any field on the left to highlight the corresponding bytes on the right.
+  Switch between Python/C/Go layouts and big/little endian to see why "just send memory" doesn't work.
+</div>
+
+<script>
+// ── Order data ──
+const ORDER = {
+  id: "ord00002",
+  platform_transaction_id: 123456789,
+  status: "en_route",
+  payment_method: "credit_card",
+  price_cents: 5496,
+  tip_cents: 500,
+  driver_id: "driv0001",
+  customer_name: "Alice Nakamura",
+  restaurant_id: "rest0001",
+  latitude: 40.748817,
+  longitude: -73.985428,
+  created_at: 1700000000.0,
+  estimated_delivery_minutes: 25,
+  delivery_notes: "Ring doorbell twice",
+  promo_code: "SAVE20",
+  item_count: 3,
+};
+
+// Field metadata: type and display
+const FIELDS = [
+  { key: "id",                          type: "str",   label: "id" },
+  { key: "platform_transaction_id",     type: "int",   label: "platform_transaction_id" },
+  { key: "status",                      type: "enum",  label: "status" },
+  { key: "payment_method",              type: "enum",  label: "payment_method" },
+  { key: "price_cents",                 type: "int",   label: "price_cents (total)" },
+  { key: "tip_cents",                   type: "int",   label: "tip_cents" },
+  { key: "driver_id",                   type: "str",   label: "driver_id" },
+  { key: "customer_name",              type: "str",   label: "customer.name" },
+  { key: "restaurant_id",              type: "str",   label: "restaurant_id" },
+  { key: "latitude",                   type: "float", label: "customer.location.latitude" },
+  { key: "longitude",                  type: "float", label: "customer.location.longitude" },
+  { key: "created_at",                 type: "float", label: "created_at" },
+  { key: "estimated_delivery_minutes", type: "int",   label: "estimated_delivery_minutes" },
+  { key: "delivery_notes",            type: "str",   label: "delivery_notes" },
+  { key: "promo_code",                type: "str",   label: "promo_code" },
+  { key: "item_count",                type: "int",   label: "items (count)" },
+];
+
+let currentEndian = "big";
+let currentLayout = "python";
+let selectedField = null;
+
+// ── Encoding helpers ──
+function encodeInt32(val, endian) {
+  const buf = new ArrayBuffer(4);
+  const view = new DataView(buf);
+  view.setInt32(0, val, endian === "little");
+  return new Uint8Array(buf);
+}
+
+function encodeInt64(val, endian) {
+  // Simple: split into high/low 32-bit
+  const buf = new ArrayBuffer(8);
+  const view = new DataView(buf);
+  const high = Math.floor(val / 0x100000000);
+  const low = val >>> 0;
+  if (endian === "big") {
+    view.setInt32(0, high, false);
+    view.setInt32(4, low, false);
+  } else {
+    view.setInt32(0, low, true);
+    view.setInt32(4, high, true);
+  }
+  return new Uint8Array(buf);
+}
+
+function encodeFloat64(val, endian) {
+  const buf = new ArrayBuffer(8);
+  const view = new DataView(buf);
+  view.setFloat64(0, val, endian === "little");
+  return new Uint8Array(buf);
+}
+
+function encodeStr(val) {
+  return new TextEncoder().encode(val);
+}
+
+// ── Layout encoders ──
+// Each returns { segments: [{ key, bytes, type }...] }
+
+function encodePython(endian) {
+  // Python layout: each field is a separate heap object
+  // type_ptr(8) + refcount(8) + data
+  const segs = [];
+  const ptrBytes = endian === "big"
+    ? [0x00,0x00,0x7f,0x8b,0x8c,0x1a,0x01,0x00]
+    : [0x00,0x01,0x1a,0x8c,0x8b,0x7f,0x00,0x00];
+  const refBytes = endian === "big"
+    ? [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01]
+    : [0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00];
+
+  for (const f of FIELDS) {
+    // type pointer
+    segs.push({ key: f.key, bytes: new Uint8Array(ptrBytes), type: "ptr", label: "type_ptr" });
+    // refcount
+    segs.push({ key: f.key, bytes: new Uint8Array(refBytes), type: "meta", label: "refcount" });
+
+    const val = ORDER[f.key];
+    if (f.type === "str" || f.type === "enum") {
+      // length (8 bytes) + string data
+      const strBytes = encodeStr(val);
+      segs.push({ key: f.key, bytes: encodeInt64(strBytes.length, endian), type: "meta", label: "str_len" });
+      segs.push({ key: f.key, bytes: strBytes, type: f.type, label: "data" });
+      // padding to 8-byte boundary
+      const pad = (8 - (strBytes.length % 8)) % 8;
+      if (pad > 0) segs.push({ key: f.key, bytes: new Uint8Array(pad), type: "pad", label: "padding" });
+    } else if (f.type === "int") {
+      // Python int: ob_size(8) + digit(4+)
+      segs.push({ key: f.key, bytes: encodeInt64(1, endian), type: "meta", label: "ob_size" });
+      segs.push({ key: f.key, bytes: encodeInt32(val, endian), type: f.type, label: "data" });
+      segs.push({ key: f.key, bytes: new Uint8Array(4), type: "pad", label: "padding" });
+    } else if (f.type === "float") {
+      segs.push({ key: f.key, bytes: encodeFloat64(val, endian), type: f.type, label: "data" });
+    }
+  }
+  return segs;
+}
+
+function encodeC(endian) {
+  // C struct: fields packed with alignment, no per-field metadata
+  const segs = [];
+
+  for (const f of FIELDS) {
+    const val = ORDER[f.key];
+    if (f.type === "str" || f.type === "enum") {
+      const strBytes = encodeStr(val);
+      // C: fixed-size char array (round up to multiple of 4)
+      const size = Math.max(((strBytes.length + 4) >> 2) << 2, 4);
+      const buf = new Uint8Array(size);
+      buf.set(strBytes);
+      segs.push({ key: f.key, bytes: buf, type: f.type, label: "char[]" });
+      // align to 4
+      const pad = (4 - (size % 4)) % 4;
+      if (pad > 0) segs.push({ key: f.key, bytes: new Uint8Array(pad), type: "pad", label: "padding" });
+    } else if (f.type === "int") {
+      segs.push({ key: f.key, bytes: encodeInt32(val, endian), type: f.type, label: "int32" });
+    } else if (f.type === "float") {
+      // align to 8 before double
+      segs.push({ key: f.key, bytes: encodeFloat64(val, endian), type: f.type, label: "double" });
+    }
+  }
+  return segs;
+}
+
+function encodeGo(endian) {
+  // Go struct: different alignment rules, strings are (ptr, len) pairs
+  const segs = [];
+
+  for (const f of FIELDS) {
+    const val = ORDER[f.key];
+    if (f.type === "str" || f.type === "enum") {
+      const strBytes = encodeStr(val);
+      // Go string = pointer(8) + length(8) + data elsewhere
+      // We'll show the string header inline and data after
+      const fakePtr = endian === "big"
+        ? [0x00,0xc0,0x00,0x42,0x00,0x10,0x00,0x00]
+        : [0x00,0x00,0x10,0x00,0x42,0x00,0xc0,0x00];
+      segs.push({ key: f.key, bytes: new Uint8Array(fakePtr), type: "ptr", label: "str_ptr" });
+      segs.push({ key: f.key, bytes: encodeInt64(strBytes.length, endian), type: "meta", label: "str_len" });
+      segs.push({ key: f.key, bytes: strBytes, type: f.type, label: "str_data" });
+      const pad = (8 - (strBytes.length % 8)) % 8;
+      if (pad > 0) segs.push({ key: f.key, bytes: new Uint8Array(pad), type: "pad", label: "padding" });
+    } else if (f.type === "int") {
+      // Go int on 64-bit = int64
+      segs.push({ key: f.key, bytes: encodeInt64(val, endian), type: f.type, label: "int64" });
+    } else if (f.type === "float") {
+      segs.push({ key: f.key, bytes: encodeFloat64(val, endian), type: f.type, label: "float64" });
+    }
+  }
+  return segs;
+}
+
+// ── Rendering ──
+function getTypeClass(type) {
+  const map = { str: "hl-str", int: "hl-int", float: "hl-float", bool: "hl-bool",
+                enum: "hl-enum", ptr: "hl-ptr", meta: "hl-meta", pad: "hl-pad" };
+  return map[type] || "";
+}
+
+function getValueClass(type) {
+  const map = { str: "tree-val-str", int: "tree-val-int", float: "tree-val-float",
+                bool: "tree-val-bool", enum: "tree-val-enum" };
+  return map[type] || "";
+}
+
+function renderTree() {
+  const panel = document.getElementById("treePanel");
+  let html = "";
+  for (const f of FIELDS) {
+    const val = ORDER[f.key];
+    const valClass = getValueClass(f.type);
+    let valStr;
+    if (f.type === "str" || f.type === "enum") valStr = `"${val}"`;
+    else valStr = String(val);
+
+    const sel = selectedField === f.key ? " selected" : "";
+    html += `<div class="tree-node${sel}" data-key="${f.key}" onclick="selectField('${f.key}')">`;
+    html += `<span class="tree-key">${f.label}</span>`;
+    html += ` <span class="tree-type">(${f.type})</span>`;
+    html += ` = <span class="${valClass}">${valStr}</span>`;
+    html += `</div>`;
+  }
+  panel.innerHTML = html;
+}
+
+function renderHex(segments) {
+  const panel = document.getElementById("hexPanel");
+
+  // Flatten all bytes with metadata
+  const allBytes = [];
+  for (const seg of segments) {
+    for (let i = 0; i < seg.bytes.length; i++) {
+      allBytes.push({ byte: seg.bytes[i], key: seg.key, type: seg.type, label: seg.label });
+    }
+  }
+
+  let html = '<div class="hex-table">';
+  const bytesPerLine = 16;
+
+  for (let row = 0; row < allBytes.length; row += bytesPerLine) {
+    const lineBytes = allBytes.slice(row, row + bytesPerLine);
+
+    // Offset
+    html += `<span class="hex-offset">${row.toString(16).padStart(6, "0")}</span>  `;
+
+    // Hex bytes
+    for (let i = 0; i < bytesPerLine; i++) {
+      if (i === 8) html += `<span class="hex-separator"></span>`;
+      if (i < lineBytes.length) {
+        const b = lineBytes[i];
+        const hl = (selectedField && b.key === selectedField) ? ` highlight ${getTypeClass(b.type)}` : "";
+        html += `<span class="hex-byte${hl}" title="${b.key}: ${b.label}">${b.byte.toString(16).padStart(2, "0")}</span>`;
+      } else {
+        html += `<span class="hex-byte">  </span>`;
+      }
+    }
+
+    // ASCII
+    html += `<span class="hex-ascii">|`;
+    for (let i = 0; i < lineBytes.length; i++) {
+      const b = lineBytes[i];
+      const ch = (b.byte >= 32 && b.byte < 127) ? String.fromCharCode(b.byte) : ".";
+      const hl = (selectedField && b.key === selectedField) ? ` highlight` : "";
+      html += `<span class="${hl}">${ch}</span>`;
+    }
+    html += `|</span>\n`;
+  }
+
+  html += '</div>';
+  panel.innerHTML = html;
+
+  // Update stats
+  const totalBytes = allBytes.length;
+  const dataBytes = allBytes.filter(b => b.type !== "pad" && b.type !== "ptr" && b.type !== "meta").length;
+  const overheadBytes = totalBytes - dataBytes;
+  const statsHtml = `
+    <div class="stat"><div class="stat-value">${totalBytes}</div><div class="stat-label">Total bytes</div></div>
+    <div class="stat"><div class="stat-value">${dataBytes}</div><div class="stat-label">Data bytes</div></div>
+    <div class="stat"><div class="stat-value">${overheadBytes}</div><div class="stat-label">Overhead bytes</div></div>
+    <div class="stat"><div class="stat-value">${totalBytes > 0 ? ((overheadBytes / totalBytes) * 100).toFixed(0) : 0}%</div><div class="stat-label">Overhead ratio</div></div>
+  `;
+  document.getElementById("statsBar").innerHTML = statsHtml;
+}
+
+function renderLegend() {
+  const items = [
+    { cls: "hl-str",   label: "String" },
+    { cls: "hl-int",   label: "Integer" },
+    { cls: "hl-float", label: "Float" },
+    { cls: "hl-enum",  label: "Enum" },
+    { cls: "hl-ptr",   label: "Pointer" },
+    { cls: "hl-meta",  label: "Metadata" },
+    { cls: "hl-pad",   label: "Padding" },
+  ];
+  const el = document.getElementById("legend");
+  el.innerHTML = items.map(i => {
+    const tmp = document.createElement("span");
+    tmp.className = `hex-byte ${i.cls}`;
+    // extract background from class
+    return `<div class="legend-item"><span class="legend-swatch ${i.cls}"></span>${i.label}</div>`;
+  }).join("");
+}
+
+function getSegments() {
+  switch (currentLayout) {
+    case "python": return encodePython(currentEndian);
+    case "c":      return encodeC(currentEndian);
+    case "go":     return encodeGo(currentEndian);
+  }
+}
+
+function render() {
+  const layoutNames = { python: "Python memory", c: "C struct", go: "Go struct" };
+  document.getElementById("layoutLabel").textContent =
+    `${layoutNames[currentLayout]} / ${currentEndian}-endian`;
+  renderTree();
+  renderHex(getSegments());
+  renderLegend();
+}
+
+function selectField(key) {
+  selectedField = selectedField === key ? null : key;
+  render();
+}
+
+function setEndian(e) {
+  currentEndian = e;
+  document.getElementById("btnBig").className = e === "big" ? "active" : "";
+  document.getElementById("btnLittle").className = e === "little" ? "active" : "";
+  render();
+}
+
+document.getElementById("layoutSelect").addEventListener("change", function() {
+  currentLayout = this.value;
+  render();
+});
+
+// Initial render
+render();
+</script>
+</body>
+</html>
