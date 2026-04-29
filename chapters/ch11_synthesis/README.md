@@ -30,6 +30,8 @@ We benchmark eight serialization formats (plus compression variants) on the exac
 | Cap'n Proto | Zero-copy, hand-built encoder | Ch07 |
 | + zstd variants | Zstandard compression on top | Ch08 |
 
+> **Important caveat:** Protobuf, FlatBuffers, Avro, and Cap'n Proto use **from-scratch Python implementations** built to teach the wire format. Their *speed* numbers reflect Python overhead, not format overhead — production C++/Rust implementations are 10-100x faster. The *size* numbers are valid since the wire format is identical. JSON and MessagePack use production libraries, so their speed is more representative. Additionally, FlatBuffers and Cap'n Proto encode a simplified schema (5-7 fields) vs the full Order for other formats, so their size numbers are not directly comparable.
+
 ### Small Order (1 item, minimal fields)
 
 At the small order size, format choice matters less than you might expect. The payload is dominated by a few string fields and a single menu item. JSON produces around 600-650 bytes, MessagePack and CBOR compress that to around 450 bytes, and the binary schema formats (Protobuf, Avro) get it down to around 90 bytes. FlatBuffers and Cap'n Proto are in the same ballpark at 88-104 bytes.

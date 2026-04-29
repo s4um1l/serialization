@@ -12,6 +12,18 @@ Most serialization tutorials show you the API: `json.dumps()`, `protobuf.Seriali
 
 This repo is different. Each chapter introduces a new format **because the previous one hits a wall** — performance, compatibility, or features. You feel the pain before learning the cure.
 
+## A Note on the Implementations
+
+Every format in this repo is implemented **from scratch in Python** — byte by byte. This is deliberate: the goal is to teach the wire format, not to be a production serialization library.
+
+What this means for benchmarks:
+- **Wire size comparisons are valid.** The wire format is the wire format regardless of implementation language.
+- **Speed comparisons show Python overhead, not format overhead.** Production C++/Rust Protobuf is 10-100x faster than our from-scratch Python encoder. Don't conclude "Protobuf is slower than JSON" from these numbers.
+- **FlatBuffers and Cap'n Proto encode a simplified schema** (5-7 fields) while other formats encode the full Order (15+ fields). Size comparisons for these two are not apples-to-apples.
+- **The from-scratch implementations prioritize clarity over performance.** They match the spec enough to produce correct wire bytes, but skip optimizations that production libraries use.
+
+Future work: C++ and Rust implementations to show true production performance characteristics.
+
 ## Every Chapter Includes
 
 - **The Scene** — a narrative that makes you *feel* the problem before showing the solution
