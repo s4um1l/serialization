@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 06 -- Apache Avro Visualizer</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text-dim: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --purple: #bc8cff;
+    --orange: #f0883e;
+    --cyan: #39d2c0;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 24px;
+  }
+  h1 { color: var(--accent); font-size: 24px; margin-bottom: 8px; }
+  h2 { color: var(--text); font-size: 18px; margin: 32px 0 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  h3 { color: var(--text-dim); font-size: 14px; margin: 16px 0 8px; text-transform: uppercase; letter-spacing: 1px; }
+  .subtitle { color: var(--text-dim); font-size: 14px; margin-bottom: 24px; }
+
+  .tabs {
+    display: flex; gap: 0; margin-bottom: 24px;
+    border-bottom: 2px solid var(--border);
+  }
+  .tab {
+    padding: 10px 20px; cursor: pointer; color: var(--text-dim);
+    border-bottom: 2px solid transparent; margin-bottom: -2px;
+    transition: all 0.2s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* Schema Resolution Visualizer */
+  .schema-panels { display: flex; gap: 24px; margin-bottom: 24px; }
+  .schema-panel {
+    flex: 1; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px;
+  }
+  .schema-panel h3 { margin-top: 0; }
+  .field-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px; margin: 4px 0; border-radius: 4px;
+    font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px;
+    transition: all 0.3s;
+  }
+  .field-row .name { flex: 1; }
+  .field-row .type { color: var(--text-dim); font-size: 12px; }
+  .field-row .status {
+    font-size: 11px; padding: 2px 8px; border-radius: 10px;
+    font-weight: 600; white-space: nowrap;
+  }
+  .field-matched { background: rgba(63, 185, 80, 0.1); border: 1px solid rgba(63, 185, 80, 0.3); }
+  .field-matched .status { background: var(--green); color: var(--bg); }
+  .field-default { background: rgba(210, 153, 34, 0.1); border: 1px solid rgba(210, 153, 34, 0.3); }
+  .field-default .status { background: var(--yellow); color: var(--bg); }
+  .field-skipped { background: rgba(139, 148, 158, 0.1); border: 1px solid rgba(139, 148, 158, 0.3); }
+  .field-skipped .status { background: var(--text-dim); color: var(--bg); }
+  .field-error { background: rgba(248, 81, 73, 0.1); border: 1px solid rgba(248, 81, 73, 0.3); }
+  .field-error .status { background: var(--red); color: var(--bg); }
+
+  .resolution-result {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px; margin-top: 16px;
+  }
+  .resolution-arrow {
+    text-align: center; font-size: 24px; color: var(--accent);
+    margin: 16px 0;
+  }
+  .controls { margin: 16px 0; display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn {
+    padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); cursor: pointer;
+    font-size: 13px; transition: all 0.2s;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
+  /* Byte viewer */
+  .byte-viewer {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px; overflow-x: auto;
+  }
+  .byte-grid {
+    display: flex; flex-wrap: wrap; gap: 2px;
+    font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px;
+  }
+  .byte-cell {
+    width: 28px; height: 28px; display: flex; align-items: center;
+    justify-content: center; border-radius: 3px; cursor: pointer;
+    transition: all 0.2s; position: relative;
+  }
+  .byte-cell:hover { transform: scale(1.3); z-index: 10; }
+  .byte-cell.cat-id { background: rgba(88, 166, 255, 0.3); color: #58a6ff; }
+  .byte-cell.cat-txn { background: rgba(188, 140, 255, 0.3); color: #bc8cff; }
+  .byte-cell.cat-customer { background: rgba(63, 185, 80, 0.3); color: #3fb950; }
+  .byte-cell.cat-restaurant { background: rgba(240, 136, 62, 0.3); color: #f0883e; }
+  .byte-cell.cat-items { background: rgba(57, 210, 192, 0.3); color: #39d2c0; }
+  .byte-cell.cat-status { background: rgba(210, 153, 34, 0.3); color: #d29922; }
+  .byte-cell.cat-payment { background: rgba(248, 81, 73, 0.3); color: #f85149; }
+  .byte-cell.cat-string { background: rgba(139, 148, 158, 0.3); color: #8b949e; }
+  .byte-cell.cat-double { background: rgba(219, 171, 121, 0.3); color: #dbab79; }
+  .byte-cell.cat-union { background: rgba(255, 123, 114, 0.15); color: #ff7b72; }
+  .byte-cell.cat-tag { background: rgba(248, 81, 73, 0.5); color: #fff; }
+
+  .byte-tooltip {
+    display: none; position: fixed; background: #1c2128;
+    border: 1px solid var(--accent); border-radius: 6px; padding: 10px 14px;
+    font-size: 12px; z-index: 100; max-width: 320px; pointer-events: none;
+  }
+  .byte-tooltip .label { color: var(--accent); font-weight: 600; }
+  .byte-tooltip .detail { color: var(--text-dim); margin-top: 4px; }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 6px; font-size: 12px;
+  }
+  .legend-swatch {
+    width: 14px; height: 14px; border-radius: 3px;
+  }
+
+  .comparison-row { display: flex; gap: 24px; margin-top: 24px; }
+  .comparison-col { flex: 1; }
+  .comparison-col h3 { margin-top: 0; }
+
+  /* Registry Flow */
+  .flow-container {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 32px; position: relative;
+    min-height: 400px; overflow: hidden;
+  }
+  .flow-node {
+    position: absolute; background: var(--bg); border: 2px solid var(--border);
+    border-radius: 10px; padding: 14px 20px; text-align: center;
+    transition: all 0.5s; font-size: 13px;
+  }
+  .flow-node .icon { font-size: 28px; display: block; margin-bottom: 6px; }
+  .flow-node .node-label { font-weight: 600; color: var(--text); }
+  .flow-node .node-detail { color: var(--text-dim); font-size: 11px; margin-top: 4px; }
+  .flow-node.highlighted { border-color: var(--accent); box-shadow: 0 0 20px rgba(88,166,255,0.3); }
+
+  .flow-arrow {
+    position: absolute; height: 2px; background: var(--border);
+    transform-origin: left center; transition: all 0.5s;
+  }
+  .flow-arrow.active { background: var(--accent); box-shadow: 0 0 8px rgba(88,166,255,0.5); }
+  .flow-arrow-label {
+    position: absolute; font-size: 11px; color: var(--text-dim);
+    white-space: nowrap; transition: all 0.5s;
+  }
+  .flow-arrow-label.active { color: var(--accent); }
+
+  .flow-message {
+    position: absolute; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--accent); display: none;
+  }
+
+  .flow-step-text {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px; margin-top: 16px;
+    min-height: 80px;
+  }
+  .flow-step-text .step-num {
+    color: var(--accent); font-weight: 700; font-size: 16px;
+  }
+
+  .size-bar-chart { margin: 16px 0; }
+  .size-bar-row { display: flex; align-items: center; gap: 12px; margin: 6px 0; }
+  .size-bar-label { width: 120px; text-align: right; font-size: 13px; color: var(--text-dim); }
+  .size-bar-track { flex: 1; height: 24px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden; }
+  .size-bar-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 8px; font-size: 12px; font-weight: 600; color: var(--bg); transition: width 0.8s ease; }
+  .size-bar-value { margin-left: 8px; font-size: 12px; color: var(--text-dim); }
+</style>
+</head>
+<body>
+
+<h1>Chapter 06 -- Apache Avro</h1>
+<p class="subtitle">Schema-driven encoding with automatic resolution. No field tags on the wire.</p>
+
+<div class="tabs">
+  <div class="tab active" onclick="showTab('resolution')">Schema Resolution</div>
+  <div class="tab" onclick="showTab('encoding')">Avro Encoding Viewer</div>
+  <div class="tab" onclick="showTab('registry')">Schema Registry Flow</div>
+</div>
+
+<!-- ================================================================ -->
+<!-- TAB 1: Schema Resolution -->
+<!-- ================================================================ -->
+<div id="resolution" class="panel active">
+  <p style="color: var(--text-dim); margin-bottom: 16px;">
+    Select a scenario to see how Avro resolves writer and reader schemas by field name.
+    Green = matched, yellow = new field (default used), gray = skipped, red = incompatible.
+  </p>
+
+  <div class="controls">
+    <button class="btn active" onclick="setScenario('v1v2')">Writer v1 / Reader v2</button>
+    <button class="btn" onclick="setScenario('v3v2')">Writer v3 / Reader v2</button>
+    <button class="btn" onclick="setScenario('v1v3')">Writer v1 / Reader v3</button>
+    <button class="btn" onclick="setScenario('typechange')">Type Change (Error)</button>
+  </div>
+
+  <div class="schema-panels">
+    <div class="schema-panel">
+      <h3>Writer Schema</h3>
+      <div id="writer-fields"></div>
+    </div>
+    <div class="schema-panel">
+      <h3>Reader Schema</h3>
+      <div id="reader-fields"></div>
+    </div>
+  </div>
+
+  <div class="resolution-arrow">&#8595; Schema Resolution &#8595;</div>
+
+  <div class="resolution-result">
+    <h3>Resolution Result</h3>
+    <div id="resolution-output"></div>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- TAB 2: Encoding Viewer -->
+<!-- ================================================================ -->
+<div id="encoding" class="panel">
+  <p style="color: var(--text-dim); margin-bottom: 16px;">
+    Hover over bytes to see which field they belong to. Avro has NO tag bytes --
+    fields are identified purely by their position in the schema.
+  </p>
+
+  <div class="controls">
+    <button class="btn active" onclick="setEncoding('avro')">Avro Encoding</button>
+    <button class="btn" onclick="setEncoding('protobuf')">Protobuf Encoding</button>
+    <button class="btn" onclick="setEncoding('compare')">Side by Side</button>
+  </div>
+
+  <div id="encoding-single" style="display:block;">
+    <div class="legend" id="encoding-legend"></div>
+    <div class="byte-viewer">
+      <div class="byte-grid" id="byte-grid"></div>
+    </div>
+    <div style="margin-top: 12px;">
+      <span id="byte-count" style="color: var(--text-dim); font-size: 13px;"></span>
+    </div>
+  </div>
+
+  <div id="encoding-compare" style="display:none;">
+    <div class="comparison-row">
+      <div class="comparison-col">
+        <h3>Avro (no field tags)</h3>
+        <div class="legend" id="avro-legend"></div>
+        <div class="byte-viewer"><div class="byte-grid" id="avro-grid"></div></div>
+        <div style="margin-top:8px;"><span id="avro-count" style="color:var(--text-dim);font-size:13px;"></span></div>
+      </div>
+      <div class="comparison-col">
+        <h3>Protobuf (with field tags)</h3>
+        <div class="legend" id="proto-legend"></div>
+        <div class="byte-viewer"><div class="byte-grid" id="proto-grid"></div></div>
+        <div style="margin-top:8px;"><span id="proto-count" style="color:var(--text-dim);font-size:13px;"></span></div>
+      </div>
+    </div>
+
+    <h3 style="margin-top: 24px;">Size Comparison</h3>
+    <div class="size-bar-chart" id="size-chart"></div>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- TAB 3: Schema Registry Flow -->
+<!-- ================================================================ -->
+<div id="registry" class="panel">
+  <p style="color: var(--text-dim); margin-bottom: 16px;">
+    Click "Play" to see the Confluent Schema Registry wire format in action:
+    producer registers schema, encodes with schema ID, consumer looks up schema to decode.
+  </p>
+
+  <div class="controls">
+    <button class="btn" id="play-btn" onclick="playFlow()">Play Flow</button>
+    <button class="btn" onclick="resetFlow()">Reset</button>
+  </div>
+
+  <div class="flow-container" id="flow-container">
+    <div class="flow-node" id="node-producer" style="left: 30px; top: 40px; width: 150px;">
+      <span class="icon">&#128229;</span>
+      <span class="node-label">Producer</span>
+      <span class="node-detail">Order v2 schema</span>
+    </div>
+    <div class="flow-node" id="node-registry" style="left: 50%; transform: translateX(-50%); top: 40px; width: 180px;">
+      <span class="icon">&#128218;</span>
+      <span class="node-label">Schema Registry</span>
+      <span class="node-detail">Stores versioned schemas</span>
+    </div>
+    <div class="flow-node" id="node-kafka" style="left: 50%; transform: translateX(-50%); top: 200px; width: 150px;">
+      <span class="icon">&#128230;</span>
+      <span class="node-label">Kafka Topic</span>
+      <span class="node-detail">orders-v2</span>
+    </div>
+    <div class="flow-node" id="node-consumer" style="right: 30px; top: 40px; width: 150px;">
+      <span class="icon">&#128228;</span>
+      <span class="node-label">Consumer</span>
+      <span class="node-detail">Order v3 schema</span>
+    </div>
+  </div>
+
+  <div class="flow-step-text" id="flow-text">
+    <span class="step-num">Ready</span>
+    <p style="margin-top: 8px; color: var(--text-dim);">
+      Click "Play" to walk through the Schema Registry flow step by step.
+    </p>
+  </div>
+
+  <h3 style="margin-top: 24px;">Wire Format Breakdown</h3>
+  <div class="byte-viewer" style="margin-top: 8px;">
+    <div style="font-family: 'SF Mono', monospace; font-size: 14px; line-height: 2;">
+      <span style="color: var(--red);">00</span>
+      <span style="color: var(--text-dim);"> &larr; magic byte (0x00)</span><br>
+      <span style="color: var(--purple);">00 00 00 02</span>
+      <span style="color: var(--text-dim);"> &larr; schema ID = 2 (big-endian uint32)</span><br>
+      <span style="color: var(--cyan);">10 6f 72 64 30 30 30 30 32 ...</span>
+      <span style="color: var(--text-dim);"> &larr; Avro payload (schemaless, 671 bytes)</span>
+    </div>
+    <div style="margin-top: 12px; color: var(--text-dim); font-size: 12px;">
+      Total overhead: 5 bytes (magic + schema ID). The consumer uses the schema ID<br>
+      to fetch the writer's schema from the registry, then resolves it with its own reader schema.
+    </div>
+  </div>
+</div>
+
+<div class="byte-tooltip" id="tooltip">
+  <div class="label" id="tooltip-label"></div>
+  <div class="detail" id="tooltip-detail"></div>
+</div>
+
+<script>
+// ================================================================
+// Tab management
+// ================================================================
+function showTab(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(name).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ================================================================
+// Schema Resolution Visualizer
+// ================================================================
+const schemas = {
+  v1: [
+    { name: 'id', type: 'string' },
+    { name: 'platform_transaction_id', type: 'long' },
+    { name: 'customer', type: 'record' },
+    { name: 'restaurant_id', type: 'string' },
+    { name: 'items', type: 'array' },
+    { name: 'status', type: 'enum' },
+    { name: 'payment_method', type: 'enum' },
+    { name: 'driver_id', type: 'union[null,string]' },
+    { name: 'delivery_notes', type: 'union[null,string]' },
+    { name: 'promo_code', type: 'union[null,string]' },
+    { name: 'created_at', type: 'double' },
+    { name: 'updated_at', type: 'double' },
+    { name: 'estimated_delivery_minutes', type: 'union[null,int]' },
+    { name: 'metadata', type: 'map<string>' },
+  ],
+  v2: [
+    { name: 'id', type: 'string' },
+    { name: 'platform_transaction_id', type: 'long' },
+    { name: 'customer', type: 'record' },
+    { name: 'restaurant_id', type: 'string' },
+    { name: 'items', type: 'array' },
+    { name: 'status', type: 'enum' },
+    { name: 'payment_method', type: 'enum' },
+    { name: 'driver_id', type: 'union[null,string]' },
+    { name: 'delivery_notes', type: 'union[null,string]' },
+    { name: 'promo_code', type: 'union[null,string]' },
+    { name: 'tip_cents', type: 'int', default: 0 },
+    { name: 'created_at', type: 'double' },
+    { name: 'updated_at', type: 'double' },
+    { name: 'estimated_delivery_minutes', type: 'union[null,int]' },
+    { name: 'metadata', type: 'map<string>' },
+  ],
+  v3: [
+    { name: 'id', type: 'string' },
+    { name: 'platform_transaction_id', type: 'long' },
+    { name: 'customer', type: 'record' },
+    { name: 'restaurant_id', type: 'string' },
+    { name: 'items', type: 'array' },
+    { name: 'status', type: 'enum' },
+    { name: 'payment_method', type: 'enum' },
+    { name: 'driver_id', type: 'union[null,string]' },
+    { name: 'delivery_notes', type: 'union[null,string]' },
+    { name: 'promo_code', type: 'union[null,string]' },
+    { name: 'tip_cents', type: 'int', default: 0 },
+    { name: 'loyalty_points', type: 'int', default: 0 },
+    { name: 'created_at', type: 'double' },
+    { name: 'updated_at', type: 'double' },
+    { name: 'estimated_delivery_minutes', type: 'union[null,int]' },
+    { name: 'metadata', type: 'map<string>' },
+  ],
+  v2_typechange: [
+    { name: 'id', type: 'string' },
+    { name: 'platform_transaction_id', type: 'long' },
+    { name: 'customer', type: 'record' },
+    { name: 'restaurant_id', type: 'int' },  // changed from string!
+    { name: 'items', type: 'array' },
+    { name: 'status', type: 'enum' },
+    { name: 'payment_method', type: 'enum' },
+    { name: 'tip_cents', type: 'int', default: 0 },
+    { name: 'created_at', type: 'double' },
+    { name: 'updated_at', type: 'double' },
+    { name: 'metadata', type: 'map<string>' },
+  ]
+};
+
+const scenarioConfigs = {
+  v1v2: { writer: 'v1', reader: 'v2', title: 'Writer v1 -> Reader v2 (Backward Compatible)' },
+  v3v2: { writer: 'v3', reader: 'v2', title: 'Writer v3 -> Reader v2 (Forward Compatible)' },
+  v1v3: { writer: 'v1', reader: 'v3', title: 'Writer v1 -> Reader v3 (Two Versions Apart)' },
+  typechange: { writer: 'v1', reader: 'v2_typechange', title: 'Type Change Error' },
+};
+
+function setScenario(key) {
+  document.querySelectorAll('#resolution .controls .btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+
+  const cfg = scenarioConfigs[key];
+  const ws = schemas[cfg.writer];
+  const rs = schemas[cfg.reader];
+  const writerNames = new Set(ws.map(f => f.name));
+  const readerNames = new Set(rs.map(f => f.name));
+  const writerMap = Object.fromEntries(ws.map(f => [f.name, f]));
+  const readerMap = Object.fromEntries(rs.map(f => [f.name, f]));
+
+  // Render writer fields
+  const wDiv = document.getElementById('writer-fields');
+  wDiv.innerHTML = '';
+  ws.forEach(f => {
+    const inReader = readerNames.has(f.name);
+    const readerField = readerMap[f.name];
+    let cls = 'field-matched';
+    let status = 'MATCHED';
+    if (!inReader) { cls = 'field-skipped'; status = 'SKIPPED'; }
+    else if (readerField && readerField.type !== f.type) { cls = 'field-error'; status = 'TYPE ERROR'; }
+    wDiv.innerHTML += `<div class="field-row ${cls}">
+      <span class="name">${f.name}</span>
+      <span class="type">${f.type}</span>
+      <span class="status">${status}</span>
+    </div>`;
+  });
+
+  // Render reader fields
+  const rDiv = document.getElementById('reader-fields');
+  rDiv.innerHTML = '';
+  rs.forEach(f => {
+    const inWriter = writerNames.has(f.name);
+    const writerField = writerMap[f.name];
+    let cls = 'field-matched';
+    let status = 'MATCHED';
+    if (!inWriter) { cls = 'field-default'; status = `DEFAULT = ${f.default !== undefined ? f.default : '?'}`; }
+    else if (writerField && writerField.type !== f.type) { cls = 'field-error'; status = 'TYPE ERROR'; }
+    rDiv.innerHTML += `<div class="field-row ${cls}">
+      <span class="name">${f.name}</span>
+      <span class="type">${f.type}</span>
+      <span class="status">${status}</span>
+    </div>`;
+  });
+
+  // Resolution output
+  const out = document.getElementById('resolution-output');
+  const matched = rs.filter(f => writerNames.has(f.name) && (!writerMap[f.name] || writerMap[f.name].type === f.type)).length;
+  const defaults = rs.filter(f => !writerNames.has(f.name)).length;
+  const skipped = ws.filter(f => !readerNames.has(f.name)).length;
+  const errors = rs.filter(f => writerNames.has(f.name) && writerMap[f.name] && writerMap[f.name].type !== f.type).length;
+
+  let html = `<div style="display:flex;gap:32px;flex-wrap:wrap;margin-top:8px;">`;
+  html += `<div><span style="color:var(--green);font-size:24px;font-weight:700;">${matched}</span><br><span style="color:var(--text-dim);font-size:12px;">Matched</span></div>`;
+  html += `<div><span style="color:var(--yellow);font-size:24px;font-weight:700;">${defaults}</span><br><span style="color:var(--text-dim);font-size:12px;">Default Used</span></div>`;
+  html += `<div><span style="color:var(--text-dim);font-size:24px;font-weight:700;">${skipped}</span><br><span style="color:var(--text-dim);font-size:12px;">Skipped</span></div>`;
+  html += `<div><span style="color:var(--red);font-size:24px;font-weight:700;">${errors}</span><br><span style="color:var(--text-dim);font-size:12px;">Errors</span></div>`;
+  html += `</div>`;
+
+  if (errors > 0) {
+    html += `<p style="color:var(--red);margin-top:12px;font-weight:600;">Resolution FAILED: incompatible type change detected. The schema change must be reverted or a new field name used.</p>`;
+  } else {
+    html += `<p style="color:var(--green);margin-top:12px;font-weight:600;">Resolution SUCCESS: all fields resolved. ${defaults > 0 ? defaults + ' new field(s) filled with defaults.' : ''} ${skipped > 0 ? skipped + ' writer field(s) skipped.' : ''}</p>`;
+  }
+  out.innerHTML = html;
+}
+
+// ================================================================
+// Encoding Viewer
+// ================================================================
+
+// Simulated Avro-encoded Order (simplified, first ~80 bytes annotated)
+const avroBytes = [
+  // id = "ord00002" (8 chars)
+  { hex: '10', field: 'id', cat: 'cat-id', desc: 'string length = 8 (zigzag)' },
+  { hex: '6f', field: 'id', cat: 'cat-id', desc: '"o"' },
+  { hex: '72', field: 'id', cat: 'cat-id', desc: '"r"' },
+  { hex: '64', field: 'id', cat: 'cat-id', desc: '"d"' },
+  { hex: '30', field: 'id', cat: 'cat-id', desc: '"0"' },
+  { hex: '30', field: 'id', cat: 'cat-id', desc: '"0"' },
+  { hex: '30', field: 'id', cat: 'cat-id', desc: '"0"' },
+  { hex: '30', field: 'id', cat: 'cat-id', desc: '"0"' },
+  { hex: '32', field: 'id', cat: 'cat-id', desc: '"2"' },
+  // platform_transaction_id = 123456789
+  { hex: 'aa', field: 'platform_transaction_id', cat: 'cat-txn', desc: 'zigzag varint byte 1' },
+  { hex: 'b4', field: 'platform_transaction_id', cat: 'cat-txn', desc: 'zigzag varint byte 2' },
+  { hex: 'de', field: 'platform_transaction_id', cat: 'cat-txn', desc: 'zigzag varint byte 3' },
+  { hex: '75', field: 'platform_transaction_id', cat: 'cat-txn', desc: 'zigzag varint byte 4 (final). Value = 123456789' },
+  // customer.id = "cust0001"
+  { hex: '10', field: 'customer.id', cat: 'cat-customer', desc: 'string length = 8' },
+  { hex: '63', field: 'customer.id', cat: 'cat-customer', desc: '"c"' },
+  { hex: '75', field: 'customer.id', cat: 'cat-customer', desc: '"u"' },
+  { hex: '73', field: 'customer.id', cat: 'cat-customer', desc: '"s"' },
+  { hex: '74', field: 'customer.id', cat: 'cat-customer', desc: '"t"' },
+  { hex: '30', field: 'customer.id', cat: 'cat-customer', desc: '"0"' },
+  { hex: '30', field: 'customer.id', cat: 'cat-customer', desc: '"0"' },
+  { hex: '30', field: 'customer.id', cat: 'cat-customer', desc: '"0"' },
+  { hex: '31', field: 'customer.id', cat: 'cat-customer', desc: '"1"' },
+  // customer.name = "Alice Nakamura" (14 chars)
+  { hex: '1c', field: 'customer.name', cat: 'cat-customer', desc: 'string length = 14' },
+  { hex: '41', field: 'customer.name', cat: 'cat-customer', desc: '"A"' },
+  { hex: '6c', field: 'customer.name', cat: 'cat-customer', desc: '"l"' },
+  { hex: '69', field: 'customer.name', cat: 'cat-customer', desc: '"i"' },
+  { hex: '63', field: 'customer.name', cat: 'cat-customer', desc: '"c"' },
+  { hex: '65', field: 'customer.name', cat: 'cat-customer', desc: '"e"' },
+  { hex: '20', field: 'customer.name', cat: 'cat-customer', desc: '" "' },
+  { hex: '4e', field: 'customer.name', cat: 'cat-customer', desc: '"N"' },
+  { hex: '61', field: 'customer.name', cat: 'cat-customer', desc: '"a"' },
+  { hex: '6b', field: 'customer.name', cat: 'cat-customer', desc: '"k"' },
+  { hex: '61', field: 'customer.name', cat: 'cat-customer', desc: '"a"' },
+  { hex: '6d', field: 'customer.name', cat: 'cat-customer', desc: '"m"' },
+  { hex: '75', field: 'customer.name', cat: 'cat-customer', desc: '"u"' },
+  { hex: '72', field: 'customer.name', cat: 'cat-customer', desc: '"r"' },
+  { hex: '61', field: 'customer.name', cat: 'cat-customer', desc: '"a"' },
+  // customer.email union index + value
+  { hex: '02', field: 'customer.email', cat: 'cat-union', desc: 'union index = 1 (string branch)' },
+  { hex: '22', field: 'customer.email', cat: 'cat-customer', desc: 'string length = 17' },
+  { hex: '61', field: 'customer.email', cat: 'cat-customer', desc: '"a" (alice@example.com)' },
+  { hex: '6c', field: 'customer.email', cat: 'cat-customer', desc: '"l"' },
+  { hex: '69', field: 'customer.email', cat: 'cat-customer', desc: '"i"' },
+  // ... (showing representative bytes)
+  { hex: '..', field: 'customer.email', cat: 'cat-customer', desc: '... rest of email (13 more bytes)' },
+  // restaurant_id
+  { hex: '10', field: 'restaurant_id', cat: 'cat-restaurant', desc: 'string length = 8' },
+  { hex: '72', field: 'restaurant_id', cat: 'cat-restaurant', desc: '"r"' },
+  { hex: '65', field: 'restaurant_id', cat: 'cat-restaurant', desc: '"e"' },
+  { hex: '73', field: 'restaurant_id', cat: 'cat-restaurant', desc: '"s"' },
+  { hex: '74', field: 'restaurant_id', cat: 'cat-restaurant', desc: '"t"' },
+  { hex: '30', field: 'restaurant_id', cat: 'cat-restaurant', desc: '"0"' },
+  { hex: '30', field: 'restaurant_id', cat: 'cat-restaurant', desc: '"0"' },
+  { hex: '30', field: 'restaurant_id', cat: 'cat-restaurant', desc: '"0"' },
+  { hex: '31', field: 'restaurant_id', cat: 'cat-restaurant', desc: '"1"' },
+  // items array block count
+  { hex: '06', field: 'items (array)', cat: 'cat-items', desc: 'array block count = 3' },
+  { hex: '..', field: 'items (array)', cat: 'cat-items', desc: '... item data (400+ bytes)' },
+  // status enum
+  { hex: '0a', field: 'status', cat: 'cat-status', desc: 'enum index = 5 -> EN_ROUTE' },
+  // payment_method enum
+  { hex: '00', field: 'payment_method', cat: 'cat-payment', desc: 'enum index = 0 -> CREDIT_CARD' },
+  // tip_cents
+  { hex: 'e8', field: 'tip_cents', cat: 'cat-txn', desc: 'zigzag varint byte 1' },
+  { hex: '07', field: 'tip_cents', cat: 'cat-txn', desc: 'zigzag varint byte 2 (final). Value = 500' },
+  // created_at double
+  { hex: '00', field: 'created_at', cat: 'cat-double', desc: 'double byte 1 (IEEE 754 LE)' },
+  { hex: '00', field: 'created_at', cat: 'cat-double', desc: 'double byte 2' },
+  { hex: '00', field: 'created_at', cat: 'cat-double', desc: 'double byte 3' },
+  { hex: '40', field: 'created_at', cat: 'cat-double', desc: 'double byte 4' },
+  { hex: 'fc', field: 'created_at', cat: 'cat-double', desc: 'double byte 5' },
+  { hex: '54', field: 'created_at', cat: 'cat-double', desc: 'double byte 6' },
+  { hex: 'd9', field: 'created_at', cat: 'cat-double', desc: 'double byte 7' },
+  { hex: '41', field: 'created_at', cat: 'cat-double', desc: 'double byte 8. Value = 1700000000.0' },
+];
+
+// Simulated Protobuf encoding (same fields, WITH tags)
+const protobufBytes = [
+  // Field 1: id
+  { hex: '0a', field: 'TAG', cat: 'cat-tag', desc: 'TAG: field=1, wire_type=2 (LEN_DEL)' },
+  { hex: '08', field: 'id (length)', cat: 'cat-id', desc: 'length = 8' },
+  { hex: '6f', field: 'id', cat: 'cat-id', desc: '"o"' },
+  { hex: '72', field: 'id', cat: 'cat-id', desc: '"r"' },
+  { hex: '64', field: 'id', cat: 'cat-id', desc: '"d"' },
+  { hex: '30', field: 'id', cat: 'cat-id', desc: '"0"' },
+  { hex: '30', field: 'id', cat: 'cat-id', desc: '"0"' },
+  { hex: '30', field: 'id', cat: 'cat-id', desc: '"0"' },
+  { hex: '30', field: 'id', cat: 'cat-id', desc: '"0"' },
+  { hex: '32', field: 'id', cat: 'cat-id', desc: '"2"' },
+  // Field 2: platform_transaction_id
+  { hex: '10', field: 'TAG', cat: 'cat-tag', desc: 'TAG: field=2, wire_type=0 (VARINT)' },
+  { hex: '95', field: 'platform_transaction_id', cat: 'cat-txn', desc: 'varint byte 1' },
+  { hex: '9a', field: 'platform_transaction_id', cat: 'cat-txn', desc: 'varint byte 2' },
+  { hex: 'ef', field: 'platform_transaction_id', cat: 'cat-txn', desc: 'varint byte 3' },
+  { hex: '3a', field: 'platform_transaction_id', cat: 'cat-txn', desc: 'varint byte 4 (final). Value = 123456789' },
+  // Field 3: customer (embedded message)
+  { hex: '1a', field: 'TAG', cat: 'cat-tag', desc: 'TAG: field=3, wire_type=2 (LEN_DEL) -- customer' },
+  { hex: '..', field: 'customer', cat: 'cat-customer', desc: '... customer message bytes' },
+  // Field 4: restaurant_id
+  { hex: '22', field: 'TAG', cat: 'cat-tag', desc: 'TAG: field=4, wire_type=2 (LEN_DEL)' },
+  { hex: '08', field: 'restaurant_id (length)', cat: 'cat-restaurant', desc: 'length = 8' },
+  { hex: '72', field: 'restaurant_id', cat: 'cat-restaurant', desc: '"r"' },
+  { hex: '65', field: 'restaurant_id', cat: 'cat-restaurant', desc: '"e"' },
+  { hex: '73', field: 'restaurant_id', cat: 'cat-restaurant', desc: '"s"' },
+  { hex: '74', field: 'restaurant_id', cat: 'cat-restaurant', desc: '"t"' },
+  { hex: '30', field: 'restaurant_id', cat: 'cat-restaurant', desc: '"0"' },
+  { hex: '30', field: 'restaurant_id', cat: 'cat-restaurant', desc: '"0"' },
+  { hex: '30', field: 'restaurant_id', cat: 'cat-restaurant', desc: '"0"' },
+  { hex: '31', field: 'restaurant_id', cat: 'cat-restaurant', desc: '"1"' },
+  // Field 5: items
+  { hex: '2a', field: 'TAG', cat: 'cat-tag', desc: 'TAG: field=5, wire_type=2 (LEN_DEL) -- items[0]' },
+  { hex: '..', field: 'items', cat: 'cat-items', desc: '... items data' },
+  // Field 6: status
+  { hex: '30', field: 'TAG', cat: 'cat-tag', desc: 'TAG: field=6, wire_type=0 (VARINT) -- status' },
+  { hex: '06', field: 'status', cat: 'cat-status', desc: 'enum value = 6 (EN_ROUTE)' },
+  // Field 7: payment
+  { hex: '38', field: 'TAG', cat: 'cat-tag', desc: 'TAG: field=7, wire_type=0 (VARINT) -- payment' },
+  { hex: '01', field: 'payment_method', cat: 'cat-payment', desc: 'enum value = 1 (CREDIT_CARD)' },
+  // Field 11: tip_cents
+  { hex: '58', field: 'TAG', cat: 'cat-tag', desc: 'TAG: field=11, wire_type=0 (VARINT) -- tip_cents' },
+  { hex: 'f4', field: 'tip_cents', cat: 'cat-txn', desc: 'varint byte 1' },
+  { hex: '03', field: 'tip_cents', cat: 'cat-txn', desc: 'varint byte 2. Value = 500' },
+  // Field 12: created_at
+  { hex: '61', field: 'TAG', cat: 'cat-tag', desc: 'TAG: field=12, wire_type=1 (64-BIT) -- created_at' },
+  { hex: '00', field: 'created_at', cat: 'cat-double', desc: 'double byte 1' },
+  { hex: '00', field: 'created_at', cat: 'cat-double', desc: 'double byte 2' },
+  { hex: '00', field: 'created_at', cat: 'cat-double', desc: 'double byte 3' },
+  { hex: '40', field: 'created_at', cat: 'cat-double', desc: 'double byte 4' },
+  { hex: 'fc', field: 'created_at', cat: 'cat-double', desc: 'double byte 5' },
+  { hex: '54', field: 'created_at', cat: 'cat-double', desc: 'double byte 6' },
+  { hex: 'd9', field: 'created_at', cat: 'cat-double', desc: 'double byte 7' },
+  { hex: '41', field: 'created_at', cat: 'cat-double', desc: 'double byte 8. Value = 1700000000.0' },
+];
+
+const catColors = {
+  'cat-id': { label: 'id', color: '#58a6ff' },
+  'cat-txn': { label: 'transaction/int', color: '#bc8cff' },
+  'cat-customer': { label: 'customer', color: '#3fb950' },
+  'cat-restaurant': { label: 'restaurant_id', color: '#f0883e' },
+  'cat-items': { label: 'items', color: '#39d2c0' },
+  'cat-status': { label: 'status', color: '#d29922' },
+  'cat-payment': { label: 'payment', color: '#f85149' },
+  'cat-string': { label: 'string', color: '#8b949e' },
+  'cat-double': { label: 'double', color: '#dbab79' },
+  'cat-union': { label: 'union index', color: '#ff7b72' },
+  'cat-tag': { label: 'TAG (protobuf only)', color: '#f85149' },
+};
+
+function renderByteGrid(bytes, gridId, countId, legendId, isProto) {
+  const grid = document.getElementById(gridId);
+  const countEl = document.getElementById(countId);
+  const legendEl = document.getElementById(legendId);
+
+  grid.innerHTML = '';
+  bytes.forEach((b, i) => {
+    const cell = document.createElement('div');
+    cell.className = `byte-cell ${b.cat}`;
+    cell.textContent = b.hex;
+    cell.addEventListener('mouseenter', (e) => showTooltip(e, b));
+    cell.addEventListener('mousemove', (e) => moveTooltip(e));
+    cell.addEventListener('mouseleave', hideTooltip);
+    grid.appendChild(cell);
+  });
+
+  const totalBytes = isProto ? 715 : 671;
+  countEl.textContent = `Showing ${bytes.length} representative bytes of ${totalBytes} total. ${isProto ? 'Red bytes = field tags (Protobuf overhead).' : 'No tag bytes at all.'}`;
+
+  // Legend
+  const usedCats = [...new Set(bytes.map(b => b.cat))];
+  legendEl.innerHTML = '';
+  usedCats.forEach(cat => {
+    const info = catColors[cat];
+    if (!info) return;
+    legendEl.innerHTML += `<div class="legend-item"><div class="legend-swatch" style="background:${info.color}"></div>${info.label}</div>`;
+  });
+}
+
+function setEncoding(mode) {
+  document.querySelectorAll('#encoding .controls .btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+
+  const singleDiv = document.getElementById('encoding-single');
+  const compareDiv = document.getElementById('encoding-compare');
+
+  if (mode === 'compare') {
+    singleDiv.style.display = 'none';
+    compareDiv.style.display = 'block';
+    renderByteGrid(avroBytes, 'avro-grid', 'avro-count', 'avro-legend', false);
+    renderByteGrid(protobufBytes, 'proto-grid', 'proto-count', 'proto-legend', true);
+    renderSizeChart();
+  } else {
+    singleDiv.style.display = 'block';
+    compareDiv.style.display = 'none';
+    const bytes = mode === 'avro' ? avroBytes : protobufBytes;
+    renderByteGrid(bytes, 'byte-grid', 'byte-count', 'encoding-legend', mode === 'protobuf');
+  }
+}
+
+function renderSizeChart() {
+  const sizes = [
+    { label: 'JSON', size: 1661, color: '#8b949e' },
+    { label: 'MsgPack', size: 1000, color: '#bc8cff' },
+    { label: 'Protobuf', size: 715, color: '#f0883e' },
+    { label: 'Avro', size: 671, color: '#58a6ff' },
+  ];
+  const maxSize = Math.max(...sizes.map(s => s.size));
+  const chart = document.getElementById('size-chart');
+  chart.innerHTML = '';
+  sizes.forEach(s => {
+    const pct = (s.size / maxSize * 100).toFixed(0);
+    chart.innerHTML += `<div class="size-bar-row">
+      <div class="size-bar-label">${s.label}</div>
+      <div class="size-bar-track">
+        <div class="size-bar-fill" style="width:${pct}%;background:${s.color};">${s.size} B</div>
+      </div>
+      <div class="size-bar-value">${(s.size / 671).toFixed(2)}x</div>
+    </div>`;
+  });
+}
+
+// Tooltip
+function showTooltip(e, b) {
+  const tt = document.getElementById('tooltip');
+  document.getElementById('tooltip-label').textContent = b.field;
+  document.getElementById('tooltip-detail').textContent = `0x${b.hex}: ${b.desc}`;
+  tt.style.display = 'block';
+  moveTooltip(e);
+}
+function moveTooltip(e) {
+  const tt = document.getElementById('tooltip');
+  tt.style.left = (e.clientX + 16) + 'px';
+  tt.style.top = (e.clientY - 10) + 'px';
+}
+function hideTooltip() {
+  document.getElementById('tooltip').style.display = 'none';
+}
+
+// ================================================================
+// Schema Registry Flow Animation
+// ================================================================
+let flowStep = 0;
+const flowSteps = [
+  {
+    num: 1,
+    title: 'Producer registers schema',
+    text: 'The producer sends its Order v2 schema to the Schema Registry via REST API (POST /subjects/orders-value/versions). The registry checks compatibility, stores the schema, and returns schema_id = 2.',
+    highlight: ['node-producer', 'node-registry'],
+  },
+  {
+    num: 2,
+    title: 'Producer encodes message',
+    text: 'The producer serializes the Order using Avro schemaless encoding (671 bytes), then prepends the 5-byte Confluent header: [0x00][00 00 00 02]. Total wire size: 676 bytes.',
+    highlight: ['node-producer'],
+  },
+  {
+    num: 3,
+    title: 'Message published to Kafka',
+    text: 'The 676-byte message is published to the "orders-v2" Kafka topic. Kafka stores it as an opaque byte array -- it does not interpret the Avro payload or the schema ID.',
+    highlight: ['node-producer', 'node-kafka'],
+  },
+  {
+    num: 4,
+    title: 'Consumer reads message',
+    text: 'The consumer reads the message from Kafka. It extracts the magic byte (0x00) and schema ID (2) from the first 5 bytes.',
+    highlight: ['node-kafka', 'node-consumer'],
+  },
+  {
+    num: 5,
+    title: 'Consumer fetches writer schema',
+    text: 'The consumer calls the Schema Registry (GET /schemas/ids/2) to get the writer\'s schema. In production, schema lookups are cached -- only the first lookup hits the network.',
+    highlight: ['node-consumer', 'node-registry'],
+  },
+  {
+    num: 6,
+    title: 'Schema resolution + decode',
+    text: 'The consumer resolves the writer schema (v2) against its own reader schema (v3). Fields matched by name: id, customer, status, tip_cents, etc. New field "loyalty_points" gets its default (0). The Avro payload is decoded using the resolved schema.',
+    highlight: ['node-consumer'],
+  },
+];
+
+function playFlow() {
+  if (flowStep >= flowSteps.length) {
+    flowStep = 0;
+  }
+  const step = flowSteps[flowStep];
+
+  // Reset highlights
+  document.querySelectorAll('.flow-node').forEach(n => n.classList.remove('highlighted'));
+  step.highlight.forEach(id => document.getElementById(id).classList.add('highlighted'));
+
+  // Update text
+  const textDiv = document.getElementById('flow-text');
+  textDiv.innerHTML = `<span class="step-num">Step ${step.num}/6: ${step.title}</span>
+    <p style="margin-top: 8px; color: var(--text-dim);">${step.text}</p>`;
+
+  flowStep++;
+
+  if (flowStep < flowSteps.length) {
+    document.getElementById('play-btn').textContent = 'Next Step';
+  } else {
+    document.getElementById('play-btn').textContent = 'Replay';
+  }
+}
+
+function resetFlow() {
+  flowStep = 0;
+  document.querySelectorAll('.flow-node').forEach(n => n.classList.remove('highlighted'));
+  document.getElementById('flow-text').innerHTML = `<span class="step-num">Ready</span>
+    <p style="margin-top: 8px; color: var(--text-dim);">Click "Play" to walk through the Schema Registry flow step by step.</p>`;
+  document.getElementById('play-btn').textContent = 'Play Flow';
+}
+
+// ================================================================
+// Initialize
+// ================================================================
+setScenario('v1v2');
+// Trigger initial encoding view
+renderByteGrid(avroBytes, 'byte-grid', 'byte-count', 'encoding-legend', false);
+</script>
+</body>
+</html>

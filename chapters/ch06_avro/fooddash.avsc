@@ -1,0 +1,61 @@
+{
+  "type": "record",
+  "name": "Order",
+  "namespace": "com.fooddash",
+  "fields": [
+    {"name": "id", "type": "string"},
+    {"name": "platform_transaction_id", "type": "long"},
+    {"name": "customer", "type": {
+      "type": "record",
+      "name": "Customer",
+      "fields": [
+        {"name": "id", "type": "string"},
+        {"name": "name", "type": "string"},
+        {"name": "email", "type": ["null", "string"], "default": null},
+        {"name": "phone", "type": ["null", "string"], "default": null},
+        {"name": "address", "type": ["null", "string"], "default": null},
+        {"name": "location", "type": ["null", {
+          "type": "record",
+          "name": "GeoPoint",
+          "fields": [
+            {"name": "latitude", "type": "double"},
+            {"name": "longitude", "type": "double"}
+          ]
+        }], "default": null}
+      ]
+    }},
+    {"name": "restaurant_id", "type": "string"},
+    {"name": "items", "type": {"type": "array", "items": {
+      "type": "record",
+      "name": "OrderItem",
+      "fields": [
+        {"name": "menu_item", "type": {
+          "type": "record",
+          "name": "MenuItem",
+          "fields": [
+            {"name": "id", "type": "string"},
+            {"name": "name", "type": "string"},
+            {"name": "price_cents", "type": "int"},
+            {"name": "description", "type": ["null", "string"], "default": null},
+            {"name": "category", "type": ["null", "string"], "default": null},
+            {"name": "is_vegetarian", "type": "boolean", "default": false},
+            {"name": "allergens", "type": {"type": "array", "items": "string"}, "default": []},
+            {"name": "thumbnail_png", "type": "bytes", "default": ""}
+          ]
+        }},
+        {"name": "quantity", "type": "int", "default": 1},
+        {"name": "special_instructions", "type": ["null", "string"], "default": null}
+      ]
+    }}},
+    {"name": "status", "type": {"type": "enum", "name": "OrderStatus", "symbols": ["PLACED","CONFIRMED","PREPARING","READY","PICKED_UP","EN_ROUTE","DELIVERED","CANCELLED"]}, "default": "PLACED"},
+    {"name": "payment_method", "type": {"type": "enum", "name": "PaymentMethod", "symbols": ["CREDIT_CARD","DEBIT_CARD","CASH","WALLET"]}, "default": "CREDIT_CARD"},
+    {"name": "driver_id", "type": ["null", "string"], "default": null},
+    {"name": "delivery_notes", "type": ["null", "string"], "default": null},
+    {"name": "promo_code", "type": ["null", "string"], "default": null},
+    {"name": "tip_cents", "type": "int", "default": 0},
+    {"name": "created_at", "type": "double"},
+    {"name": "updated_at", "type": "double"},
+    {"name": "estimated_delivery_minutes", "type": ["null", "int"], "default": null},
+    {"name": "metadata", "type": {"type": "map", "values": "string"}, "default": {}}
+  ]
+}
