@@ -1,0 +1,28 @@
+[project]
+name = "serialization"
+version = "0.1.0"
+description = "Deep-dive educational repo on serialization formats — from CSV to Cap'n Proto, built through an evolving food delivery case study"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.10",
+]
+
+[project.optional-dependencies]
+msgpack = ["msgpack>=1.0"]
+cbor = ["cbor2>=5.6"]
+protobuf = ["protobuf>=5.0"]
+flatbuffers = ["flatbuffers>=24.0"]
+avro = ["fastavro>=1.9"]
+capnproto = ["pycapnp>=2.0"]
+compression = ["zstandard>=0.23", "lz4>=4.3"]
+orjson = ["orjson>=3.10"]
+all = [
+    "serialization[msgpack,cbor,protobuf,flatbuffers,avro,capnproto,compression,orjson]",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.8",
+]
