@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 04 -- Protocol Buffers Wire Format Explorer</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface2: #21262d;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text-dim: #8b949e;
+  --accent: #58a6ff;
+  --purple: #bc8cff;
+  --cyan: #56d4dd;
+  --green: #3fb950;
+  --orange: #d29922;
+  --red: #f85149;
+  --blue: #388bfd;
+  --pink: #db61a2;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 1.6rem;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+h2 {
+  font-size: 1.2rem;
+  color: var(--purple);
+  margin: 2rem 0 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+h3 {
+  font-size: 1rem;
+  color: var(--cyan);
+  margin: 1rem 0 0.5rem;
+}
+
+.subtitle {
+  color: var(--text-dim);
+  margin-bottom: 2rem;
+  font-size: 0.9rem;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+label {
+  display: block;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  margin-bottom: 0.3rem;
+}
+
+input[type="number"], input[type="text"], select {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 0.5rem 0.8rem;
+  border-radius: 4px;
+  width: 100%;
+  max-width: 300px;
+}
+
+input:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+button {
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  padding: 0.5rem 1.2rem;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+
+button:hover { opacity: 0.9; }
+
+.result {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1rem;
+  margin-top: 1rem;
+  white-space: pre-wrap;
+  font-size: 0.85rem;
+  overflow-x: auto;
+}
+
+.step { margin: 0.3rem 0; }
+.step-label { color: var(--text-dim); }
+.step-val { color: var(--green); }
+.step-bin { color: var(--cyan); }
+.step-hex { color: var(--orange); }
+.step-note { color: var(--pink); }
+
+/* Hex dump */
+.hex-dump { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 1rem; }
+.hex-byte {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  font-size: 0.75rem;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+}
+.hex-byte:hover { border-color: var(--text); transform: scale(1.15); }
+.hex-byte.selected { border-color: #fff; box-shadow: 0 0 8px rgba(255,255,255,0.3); }
+
+.hex-byte.tag { background: rgba(188,140,255,0.25); color: var(--purple); }
+.hex-byte.varint { background: rgba(86,212,221,0.2); color: var(--cyan); }
+.hex-byte.length { background: rgba(56,139,253,0.25); color: var(--blue); }
+.hex-byte.string-data { background: rgba(63,185,80,0.2); color: var(--green); }
+.hex-byte.binary-data { background: rgba(248,81,73,0.2); color: var(--red); }
+.hex-byte.double-data { background: rgba(210,153,34,0.25); color: var(--orange); }
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 1rem 0;
+  font-size: 0.8rem;
+}
+.legend-item { display: flex; align-items: center; gap: 0.4rem; }
+.legend-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.annotation-box {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1rem;
+  margin-top: 1rem;
+  min-height: 60px;
+  font-size: 0.85rem;
+}
+
+/* Schema evolution */
+.evo-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.evo-panel {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1rem;
+}
+
+.evo-panel h4 {
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+  font-size: 0.8rem;
+}
+
+.field-num {
+  color: var(--purple);
+  width: 24px;
+  text-align: right;
+}
+
+.field-name { color: var(--text); flex: 1; }
+.field-type { color: var(--text-dim); font-size: 0.75rem; }
+.field-status { font-size: 0.75rem; }
+.field-ok { color: var(--green); }
+.field-new { color: var(--cyan); }
+.field-removed { color: var(--red); text-decoration: line-through; }
+.field-unknown { color: var(--orange); }
+
+.evo-controls { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 1rem 0; }
+.evo-controls button { font-size: 0.8rem; padding: 0.4rem 0.8rem; }
+.evo-controls button.active { background: var(--green); }
+.evo-result { margin-top: 1rem; }
+
+@media (max-width: 700px) {
+  body { padding: 1rem; }
+  .evo-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<h1>Protocol Buffers Wire Format Explorer</h1>
+<p class="subtitle">Chapter 04 -- Interactive visualizations for varint encoding, tag construction, and wire format anatomy</p>
+
+<!-- ================================================================ -->
+<h2>1. Varint Calculator</h2>
+<!-- ================================================================ -->
+
+<div class="panel">
+  <label for="varint-input">Enter an unsigned integer:</label>
+  <input type="number" id="varint-input" value="300" min="0" max="9007199254740992">
+  <button onclick="calcVarint()">Encode</button>
+  <div class="result" id="varint-result"></div>
+</div>
+
+<!-- ================================================================ -->
+<h2>2. Zigzag Calculator</h2>
+<!-- ================================================================ -->
+
+<div class="panel">
+  <label for="zigzag-input">Enter a signed integer:</label>
+  <input type="number" id="zigzag-input" value="-1" min="-2147483648" max="2147483647">
+  <button onclick="calcZigzag()">Encode</button>
+  <div class="result" id="zigzag-result"></div>
+</div>
+
+<!-- ================================================================ -->
+<h2>3. Tag Encoder</h2>
+<!-- ================================================================ -->
+
+<div class="panel">
+  <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:end;">
+    <div>
+      <label for="tag-field">Field number:</label>
+      <input type="number" id="tag-field" value="1" min="1" max="536870911" style="max-width:120px;">
+    </div>
+    <div>
+      <label for="tag-wire">Wire type:</label>
+      <select id="tag-wire" style="max-width:220px;">
+        <option value="0">0 - VARINT</option>
+        <option value="1">1 - 64-BIT</option>
+        <option value="2" selected>2 - LENGTH_DELIMITED</option>
+        <option value="5">5 - 32-BIT</option>
+      </select>
+    </div>
+    <button onclick="calcTag()">Encode</button>
+  </div>
+  <div class="result" id="tag-result"></div>
+</div>
+
+<!-- ================================================================ -->
+<h2>4. Wire Format Explorer</h2>
+<!-- ================================================================ -->
+
+<div class="panel">
+  <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:0.5rem;">
+    A protobuf-encoded FoodDash Order. Click any byte to see what it means.
+  </p>
+
+  <div class="legend">
+    <div class="legend-item"><span class="legend-swatch" style="background:rgba(188,140,255,0.4);"></span> Tag</div>
+    <div class="legend-item"><span class="legend-swatch" style="background:rgba(86,212,221,0.35);"></span> Varint data</div>
+    <div class="legend-item"><span class="legend-swatch" style="background:rgba(56,139,253,0.4);"></span> Length prefix</div>
+    <div class="legend-item"><span class="legend-swatch" style="background:rgba(63,185,80,0.35);"></span> String data</div>
+    <div class="legend-item"><span class="legend-swatch" style="background:rgba(248,81,73,0.35);"></span> Binary data</div>
+    <div class="legend-item"><span class="legend-swatch" style="background:rgba(210,153,34,0.4);"></span> Double (64-bit)</div>
+  </div>
+
+  <div class="hex-dump" id="hex-dump"></div>
+  <div class="annotation-box" id="byte-annotation">Click a byte above to see its meaning.</div>
+</div>
+
+<!-- ================================================================ -->
+<h2>5. Schema Evolution Simulator</h2>
+<!-- ================================================================ -->
+
+<div class="panel">
+  <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:0.5rem;">
+    See what happens when the writer and reader have different schemas.
+  </p>
+
+  <div class="evo-controls">
+    <button id="evo-btn-base" class="active" onclick="setEvoScenario('base')">Baseline (same schema)</button>
+    <button id="evo-btn-add" onclick="setEvoScenario('add')">Add field (writer)</button>
+    <button id="evo-btn-remove" onclick="setEvoScenario('remove')">Remove field (writer)</button>
+    <button id="evo-btn-unknown" onclick="setEvoScenario('unknown')">Unknown field</button>
+    <button id="evo-btn-rename" onclick="setEvoScenario('rename')">Rename field</button>
+    <button id="evo-btn-typechg" onclick="setEvoScenario('typechg')">Change type (BREAK)</button>
+  </div>
+
+  <div class="evo-grid">
+    <div class="evo-panel">
+      <h4>Writer Schema</h4>
+      <div id="evo-writer"></div>
+    </div>
+    <div class="evo-panel">
+      <h4>Reader Schema</h4>
+      <div id="evo-reader"></div>
+    </div>
+  </div>
+  <div class="evo-result result" id="evo-result"></div>
+</div>
+
+<script>
+// ====================================================================
+// Varint encoding
+// ====================================================================
+function encodeVarint(value) {
+  if (value < 0) return [];
+  const bytes = [];
+  let v = BigInt(value);
+  if (v === 0n) return [0];
+  while (v > 0x7fn) {
+    bytes.push(Number(v & 0x7fn) | 0x80);
+    v >>= 7n;
+  }
+  bytes.push(Number(v & 0x7fn));
+  return bytes;
+}
+
+function decodeVarint(bytes, offset) {
+  let result = 0n;
+  let shift = 0n;
+  let i = offset || 0;
+  while (i < bytes.length) {
+    const b = bytes[i];
+    result |= BigInt(b & 0x7f) << shift;
+    i++;
+    if ((b & 0x80) === 0) break;
+    shift += 7n;
+  }
+  return [result, i];
+}
+
+function hex(b) { return b.toString(16).padStart(2, '0'); }
+function bin8(b) { return b.toString(2).padStart(8, '0'); }
+
+function calcVarint() {
+  const input = document.getElementById('varint-input');
+  const value = parseInt(input.value) || 0;
+  if (value < 0) {
+    document.getElementById('varint-result').textContent = 'Varint requires unsigned integer (>= 0). Use zigzag for signed.';
+    return;
+  }
+
+  const bytes = encodeVarint(value);
+  let lines = [];
+
+  lines.push(`<span class="step-label">Input:</span> <span class="step-val">${value.toLocaleString()}</span>`);
+  lines.push('');
+
+  // Binary representation
+  const fullBin = value === 0 ? '0' : value.toString(2);
+  lines.push(`<span class="step-label">Step 1: Binary representation</span>`);
+  lines.push(`  <span class="step-bin">${fullBin}</span> (${fullBin.length} bits)`);
+  lines.push('');
+
+  // Split into 7-bit groups
+  lines.push(`<span class="step-label">Step 2: Split into 7-bit groups (from LSB)</span>`);
+  const groups = [];
+  let temp = value === 0 ? 0 : value;
+  if (temp === 0) groups.push(0);
+  while (temp > 0) {
+    groups.push(temp & 0x7f);
+    temp >>>= 7;
+    if (temp === 0 && groups.length === 0) break;
+  }
+  for (let i = 0; i < groups.length; i++) {
+    const g = groups[i].toString(2).padStart(7, '0');
+    lines.push(`  Group ${i+1}: <span class="step-bin">${g}</span> (${groups[i]})`);
+  }
+  lines.push('');
+
+  // Add continuation bits
+  lines.push(`<span class="step-label">Step 3: Add continuation bits (MSB)</span>`);
+  for (let i = 0; i < bytes.length; i++) {
+    const isLast = i === bytes.length - 1;
+    const cont = isLast ? '0' : '1';
+    const dataBits = (bytes[i] & 0x7f).toString(2).padStart(7, '0');
+    const note = isLast ? '(last byte)' : '(more follow)';
+    lines.push(`  Byte ${i+1}: <span class="step-note">${cont}</span>_<span class="step-bin">${dataBits}</span> = <span class="step-hex">0x${hex(bytes[i])}</span> ${note}`);
+  }
+  lines.push('');
+
+  // Final result
+  const hexStr = bytes.map(b => '0x' + hex(b)).join(' ');
+  lines.push(`<span class="step-label">Result:</span> <span class="step-hex">${hexStr}</span> (${bytes.length} byte${bytes.length > 1 ? 's' : ''})`);
+
+  // Verify decode
+  const [decoded] = decodeVarint(bytes, 0);
+  lines.push(`<span class="step-label">Decode check:</span> <span class="step-val">${decoded.toLocaleString()}</span>`);
+
+  document.getElementById('varint-result').innerHTML = lines.join('\n');
+}
+
+// ====================================================================
+// Zigzag encoding
+// ====================================================================
+function zigzagEncode(n) {
+  const big = BigInt(n);
+  return Number((big << 1n) ^ (big >> 63n));
+}
+
+function zigzagDecode(n) {
+  const big = BigInt(n);
+  return Number((big >> 1n) ^ -(big & 1n));
+}
+
+function calcZigzag() {
+  const value = parseInt(document.getElementById('zigzag-input').value) || 0;
+  const zz = zigzagEncode(value);
+  const varintBytes = encodeVarint(zz);
+
+  let lines = [];
+  lines.push(`<span class="step-label">Signed input:</span> <span class="step-val">${value.toLocaleString()}</span>`);
+  lines.push('');
+  lines.push(`<span class="step-label">Step 1: Zigzag encode</span>`);
+  lines.push(`  Formula: (n << 1) ^ (n >> 63)`);
+  lines.push(`  (${value} << 1) ^ (${value} >> 63) = <span class="step-val">${zz}</span>`);
+  lines.push('');
+  lines.push(`<span class="step-label">Step 2: Varint encode the unsigned value</span>`);
+  const hexStr = varintBytes.map(b => '0x' + hex(b)).join(' ');
+  lines.push(`  ${zz} -> <span class="step-hex">${hexStr}</span> (${varintBytes.length} byte${varintBytes.length > 1 ? 's' : ''})`);
+  lines.push('');
+
+  // Without zigzag comparison
+  if (value < 0) {
+    lines.push(`<span class="step-label">Without zigzag:</span>`);
+    // Two's complement as unsigned 64-bit
+    const twosComp = BigInt(value) & ((1n << 64n) - 1n);
+    const naiveBytes = encodeVarint(Number(twosComp > BigInt(Number.MAX_SAFE_INTEGER) ? 9007199254740991n : twosComp));
+    lines.push(`  ${value} as unsigned 64-bit: ${twosComp}`);
+    lines.push(`  Would need ~10 bytes as varint!`);
+    lines.push(`  <span class="step-note">Zigzag saves ${10 - varintBytes.length} bytes for this value.</span>`);
+  }
+
+  lines.push('');
+  const decoded = zigzagDecode(zz);
+  lines.push(`<span class="step-label">Decode check:</span> zigzag_decode(${zz}) = <span class="step-val">${decoded}</span>`);
+
+  document.getElementById('zigzag-result').innerHTML = lines.join('\n');
+}
+
+// ====================================================================
+// Tag encoder
+// ====================================================================
+function calcTag() {
+  const fieldNum = parseInt(document.getElementById('tag-field').value) || 1;
+  const wireType = parseInt(document.getElementById('tag-wire').value);
+  const wireNames = {0: 'VARINT', 1: '64-BIT', 2: 'LENGTH_DELIMITED', 5: '32-BIT'};
+
+  const tagValue = (fieldNum << 3) | wireType;
+  const tagBytes = encodeVarint(tagValue);
+
+  let lines = [];
+  lines.push(`<span class="step-label">Field number:</span> <span class="step-val">${fieldNum}</span>`);
+  lines.push(`<span class="step-label">Wire type:</span> <span class="step-val">${wireType} (${wireNames[wireType]})</span>`);
+  lines.push('');
+  lines.push(`<span class="step-label">Formula:</span> (field_number << 3) | wire_type`);
+  lines.push(`  (${fieldNum} << 3) | ${wireType} = ${fieldNum * 8} | ${wireType} = <span class="step-val">${tagValue}</span>`);
+  lines.push('');
+
+  const bin = tagValue.toString(2);
+  const fieldBits = fieldNum.toString(2);
+  const wireBits = wireType.toString(2).padStart(3, '0');
+  lines.push(`<span class="step-label">Binary:</span> <span class="step-bin">${fieldBits}</span>_<span class="step-note">${wireBits}</span>`);
+  lines.push(`         ${'~'.repeat(fieldBits.length)} ~~~`);
+  lines.push(`         field  wire`);
+  lines.push('');
+
+  const hexStr = tagBytes.map(b => '0x' + hex(b)).join(' ');
+  lines.push(`<span class="step-label">Varint encoded:</span> <span class="step-hex">${hexStr}</span> (${tagBytes.length} byte${tagBytes.length > 1 ? 's' : ''})`);
+
+  if (fieldNum <= 15) {
+    lines.push(`\n<span class="step-note">Field 1-15: single-byte tag (efficient!)</span>`);
+  } else {
+    lines.push(`\n<span class="step-note">Field 16+: multi-byte tag (costs ${tagBytes.length - 1} extra byte${tagBytes.length > 2 ? 's' : ''} per occurrence)</span>`);
+  }
+
+  document.getElementById('tag-result').innerHTML = lines.join('\n');
+}
+
+// ====================================================================
+// Wire format explorer -- build a sample encoded Order
+// ====================================================================
+const WIRE_NAMES = {0: 'VARINT', 1: '64-BIT', 2: 'LEN_DEL', 5: '32-BIT'};
+const FIELD_NAMES = {
+  1: 'id', 2: 'platform_transaction_id', 3: 'customer', 4: 'restaurant_id',
+  5: 'items', 6: 'status', 7: 'payment_method', 8: 'driver_id',
+  9: 'delivery_notes', 10: 'promo_code', 11: 'tip_cents',
+  12: 'created_at', 13: 'updated_at', 14: 'est_delivery_min', 15: 'metadata'
+};
+
+// Build a simplified protobuf-encoded order
+function buildSampleOrder() {
+  let bytes = [];
+  let annotations = []; // {start, end, type, description}
+
+  function pushTag(fieldNum, wireType, desc) {
+    const tagVal = (fieldNum << 3) | wireType;
+    const tagBytes = encodeVarint(tagVal);
+    const start = bytes.length;
+    bytes.push(...tagBytes);
+    annotations.push({
+      start, end: bytes.length,
+      type: 'tag',
+      desc: `TAG: field ${fieldNum} (${FIELD_NAMES[fieldNum] || 'unknown'}), wire_type=${wireType} (${WIRE_NAMES[wireType]})\n${desc || ''}`
+    });
+  }
+
+  function pushVarint(value, desc) {
+    const vb = encodeVarint(value);
+    const start = bytes.length;
+    bytes.push(...vb);
+    annotations.push({start, end: bytes.length, type: 'varint', desc: `VARINT: ${value}\n${desc || ''}`});
+  }
+
+  function pushLength(len) {
+    const vb = encodeVarint(len);
+    const start = bytes.length;
+    bytes.push(...vb);
+    annotations.push({start, end: bytes.length, type: 'length', desc: `LENGTH: ${len} bytes follow`});
+  }
+
+  function pushString(str, desc) {
+    const enc = new TextEncoder().encode(str);
+    const start = bytes.length;
+    bytes.push(...enc);
+    annotations.push({start, end: bytes.length, type: 'string-data', desc: `STRING: "${str}"\n${desc || ''}`});
+  }
+
+  function pushDouble(val, desc) {
+    const buf = new ArrayBuffer(8);
+    new Float64Array(buf)[0] = val;
+    const view = new Uint8Array(buf);
+    const start = bytes.length;
+    bytes.push(...view);
+    annotations.push({start, end: bytes.length, type: 'double-data', desc: `DOUBLE: ${val}\n${desc || ''}`});
+  }
+
+  // Field 1: id = "ord00002" (string)
+  pushTag(1, 2, 'Order.id is a string (length-delimited)');
+  pushLength(8);
+  pushString('ord00002', 'The order ID');
+
+  // Field 2: platform_transaction_id = 123456789 (varint)
+  pushTag(2, 0, 'int64 encoded as varint');
+  pushVarint(123456789, '123456789 fits in 4 varint bytes');
+
+  // Field 4: restaurant_id = "rest0001" (string)
+  pushTag(4, 2, 'Order.restaurant_id');
+  pushLength(8);
+  pushString('rest0001', 'Restaurant identifier');
+
+  // Field 6: status = 6 (EN_ROUTE enum)
+  pushTag(6, 0, 'Enum encoded as varint');
+  pushVarint(6, 'EN_ROUTE = 6');
+
+  // Field 7: payment_method = 1 (CREDIT_CARD)
+  pushTag(7, 0, 'Enum encoded as varint');
+  pushVarint(1, 'CREDIT_CARD = 1');
+
+  // Field 8: driver_id = "driv0001"
+  pushTag(8, 2, 'Order.driver_id');
+  pushLength(8);
+  pushString('driv0001', 'Assigned driver');
+
+  // Field 9: delivery_notes
+  const notes = 'Ring doorbell twice';
+  pushTag(9, 2, 'Order.delivery_notes');
+  pushLength(notes.length);
+  pushString(notes, 'Customer instructions');
+
+  // Field 10: promo_code = "SAVE20"
+  pushTag(10, 2, 'Order.promo_code');
+  pushLength(6);
+  pushString('SAVE20', 'Promotional discount code');
+
+  // Field 11: tip_cents = 500
+  pushTag(11, 0, 'Order.tip_cents as varint');
+  pushVarint(500, '500 cents = $5.00 tip');
+
+  // Field 12: created_at (double)
+  pushTag(12, 1, 'Order.created_at as 64-bit double');
+  pushDouble(1700000000.0, 'Unix timestamp');
+
+  // Field 13: updated_at (double)
+  pushTag(13, 1, 'Order.updated_at as 64-bit double');
+  pushDouble(1700000300.0, 'Unix timestamp (5 min later)');
+
+  // Field 14: estimated_delivery_minutes = 25
+  pushTag(14, 0, 'Order.estimated_delivery_minutes');
+  pushVarint(25, '25 minutes estimated');
+
+  return {bytes, annotations};
+}
+
+function renderHexDump() {
+  const {bytes, annotations} = buildSampleOrder();
+  window._dumpData = {bytes, annotations};
+
+  const container = document.getElementById('hex-dump');
+  container.innerHTML = '';
+
+  for (let i = 0; i < bytes.length; i++) {
+    const span = document.createElement('span');
+    span.className = 'hex-byte';
+    span.textContent = hex(bytes[i]);
+    span.dataset.index = i;
+
+    // Find annotation for this byte
+    for (const ann of annotations) {
+      if (i >= ann.start && i < ann.end) {
+        span.classList.add(ann.type);
+        break;
+      }
+    }
+
+    span.addEventListener('click', () => onByteClick(i));
+    container.appendChild(span);
+  }
+}
+
+function onByteClick(index) {
+  const {bytes, annotations} = window._dumpData;
+
+  // Clear old selection
+  document.querySelectorAll('.hex-byte.selected').forEach(el => el.classList.remove('selected'));
+
+  // Find which annotation group this belongs to
+  let ann = null;
+  for (const a of annotations) {
+    if (index >= a.start && index < a.end) {
+      ann = a;
+      break;
+    }
+  }
+
+  if (!ann) {
+    document.getElementById('byte-annotation').textContent = `Offset ${index}: 0x${hex(bytes[index])}`;
+    return;
+  }
+
+  // Highlight all bytes in this group
+  for (let i = ann.start; i < ann.end; i++) {
+    const el = document.querySelector(`.hex-byte[data-index="${i}"]`);
+    if (el) el.classList.add('selected');
+  }
+
+  const groupHex = bytes.slice(ann.start, ann.end).map(b => '0x' + hex(b)).join(' ');
+  const groupBin = bytes.slice(ann.start, ann.end).map(b => bin8(b)).join(' ');
+
+  let text = `Offset ${ann.start}-${ann.end - 1}  (${ann.end - ann.start} byte${ann.end - ann.start > 1 ? 's' : ''})\n`;
+  text += `Hex:    ${groupHex}\n`;
+  text += `Binary: ${groupBin}\n`;
+  text += `Type:   ${ann.type.toUpperCase()}\n\n`;
+  text += ann.desc;
+
+  document.getElementById('byte-annotation').textContent = text;
+}
+
+// ====================================================================
+// Schema evolution simulator
+// ====================================================================
+const BASE_FIELDS = [
+  {num: 1, name: 'id', type: 'string'},
+  {num: 2, name: 'platform_transaction_id', type: 'int64'},
+  {num: 4, name: 'restaurant_id', type: 'string'},
+  {num: 6, name: 'status', type: 'enum'},
+  {num: 8, name: 'driver_id', type: 'string'},
+  {num: 9, name: 'delivery_notes', type: 'string'},
+  {num: 10, name: 'promo_code', type: 'string'},
+  {num: 11, name: 'tip_cents', type: 'int32'},
+  {num: 12, name: 'created_at', type: 'double'},
+];
+
+const SCENARIOS = {
+  base: {
+    title: 'Same schema on both sides',
+    writer: BASE_FIELDS.map(f => ({...f, status: 'ok'})),
+    reader: BASE_FIELDS.map(f => ({...f, status: 'ok'})),
+    result: 'All fields match. Perfect roundtrip.\nThis is the baseline -- writer and reader agree on every field.'
+  },
+  add: {
+    title: 'Writer adds a new field',
+    writer: [
+      ...BASE_FIELDS.map(f => ({...f, status: 'ok'})),
+      {num: 20, name: 'priority_score', type: 'int32', status: 'new'}
+    ],
+    reader: BASE_FIELDS.map(f => ({...f, status: 'ok'})),
+    result: 'SAFE: The reader silently skips field 20 (priority_score).\n\nThe wire format is self-describing: the tag tells the reader the wire type,\nwhich tells it how many bytes to skip. Unknown fields are not an error.\n\nThis is FORWARD COMPATIBILITY: old reader handles new data.'
+  },
+  remove: {
+    title: 'Writer removes a field',
+    writer: BASE_FIELDS.filter(f => f.num !== 10).map(f => ({...f, status: f.num === 10 ? 'removed' : 'ok'})),
+    reader: BASE_FIELDS.map(f => ({...f, status: f.num === 10 ? 'unknown' : 'ok'})),
+    result: 'SAFE: The reader expects promo_code (field 10) but it\'s absent.\n\nIn proto3, missing fields get their default value:\n  string -> ""    int32 -> 0    bool -> false    enum -> 0\n\nThe reader gets promo_code="" and continues normally.\n\nThis is BACKWARD COMPATIBILITY: new reader handles old data (or rather,\nnew writer produces data that old readers handle).'
+  },
+  unknown: {
+    title: 'Writer sends unknown field',
+    writer: [
+      ...BASE_FIELDS.map(f => ({...f, status: 'ok'})),
+      {num: 20, name: 'priority_score', type: 'int32', status: 'new'},
+      {num: 21, name: 'surge_multiplier', type: 'double', status: 'new'},
+    ],
+    reader: [
+      ...BASE_FIELDS.map(f => ({...f, status: 'ok'})),
+    ],
+    result: 'SAFE: Reader skips fields 20 and 21 entirely.\n\nThe reader parses each tag, checks the wire type:\n  Field 20: wire_type=0 (VARINT) -> read varint, skip\n  Field 21: wire_type=1 (64-BIT) -> read 8 bytes, skip\n\nNo crash. No data corruption. All known fields read correctly.\n\nThis is how protobuf enables gradual rollouts: deploy the writer\nfirst, then update readers at their own pace.'
+  },
+  rename: {
+    title: 'Rename a field',
+    writer: BASE_FIELDS.map(f => ({...f, status: 'ok'})),
+    reader: BASE_FIELDS.map(f => ({
+      ...f,
+      name: f.num === 8 ? 'courier_id' : f.name,
+      status: f.num === 8 ? 'new' : 'ok'
+    })),
+    result: 'SAFE: Field 8 was "driver_id", now "courier_id" in the reader.\n\nOnly field NUMBERS appear on the wire, never names. The bytes are:\n  0x42 0x08 "driv0001"\n  (tag: field 8, wire type 2) (length: 8) (data)\n\nThe reader interprets field 8 as "courier_id" and gets "driv0001".\nThe wire format is completely unchanged.\n\nYou can rename fields freely in your .proto file.'
+  },
+  typechg: {
+    title: 'Change field type (BREAKS!)',
+    writer: BASE_FIELDS.map(f => ({...f, status: 'ok'})),
+    reader: BASE_FIELDS.map(f => ({
+      ...f,
+      type: f.num === 11 ? 'string' : f.type,
+      status: f.num === 11 ? 'removed' : 'ok'
+    })),
+    result: 'BREAKS: Field 11 (tip_cents) changed from int32 to string.\n\nWriter encodes: tag=0x58 (field 11, wire_type=0 VARINT) + varint(500)\nReader expects: tag=0x5a (field 11, wire_type=2 LEN_DEL) + length + data\n\nThe TAG BYTES are different (0x58 vs 0x5a) because the wire type\nchanged from 0 (VARINT) to 2 (LENGTH_DELIMITED).\n\nThe reader sees wire_type=0 where it expects wire_type=2.\nIt reads a varint where it expects a length-prefixed string.\nResult: garbage data, crash, or silent corruption.\n\nRULE: Never change a field\'s type to a different wire type.\n  int32 -> int64: OK (both varint)\n  int32 -> string: BREAKS (varint vs length-delimited)'
+  }
+};
+
+function setEvoScenario(name) {
+  // Update button states
+  document.querySelectorAll('.evo-controls button').forEach(b => b.classList.remove('active'));
+  document.getElementById('evo-btn-' + name).classList.add('active');
+
+  const scenario = SCENARIOS[name];
+  const writerEl = document.getElementById('evo-writer');
+  const readerEl = document.getElementById('evo-reader');
+  const resultEl = document.getElementById('evo-result');
+
+  function renderFields(fields) {
+    return fields.map(f => {
+      const statusClass = {ok: 'field-ok', new: 'field-new', removed: 'field-removed', unknown: 'field-unknown'}[f.status] || '';
+      const statusLabel = {ok: '', new: ' (NEW)', removed: ' (REMOVED)', unknown: ' (MISSING)'}[f.status] || '';
+      return `<div class="field-row">
+        <span class="field-num">${f.num}</span>
+        <span class="field-name ${statusClass}">${f.name}${statusLabel}</span>
+        <span class="field-type">${f.type}</span>
+      </div>`;
+    }).join('');
+  }
+
+  writerEl.innerHTML = renderFields(scenario.writer);
+  readerEl.innerHTML = renderFields(scenario.reader);
+
+  const isBreak = name === 'typechg';
+  resultEl.style.borderColor = isBreak ? 'var(--red)' : 'var(--border)';
+  resultEl.textContent = scenario.result;
+}
+
+// ====================================================================
+// Initialize
+// ====================================================================
+window.addEventListener('DOMContentLoaded', () => {
+  calcVarint();
+  calcZigzag();
+  calcTag();
+  renderHexDump();
+  setEvoScenario('base');
+});
+</script>
+</body>
+</html>

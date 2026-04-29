@@ -1,0 +1,82 @@
+// FoodDash Wire -- Protocol Buffers schema definition.
+//
+// This is a REFERENCE FILE showing what a .proto looks like.
+// It is not compiled -- the chapter uses a from-scratch encoder instead.
+//
+// Key design decisions:
+//   - Field numbers 1-15 use single-byte tags (most efficient).
+//   - The most frequently accessed fields get the lowest numbers.
+//   - Enums start with an UNSPECIFIED = 0 value (proto3 best practice).
+//   - map<string,string> metadata uses field 15 (last single-byte tag).
+
+syntax = "proto3";
+package fooddash;
+
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  PLACED = 1;
+  CONFIRMED = 2;
+  PREPARING = 3;
+  READY = 4;
+  PICKED_UP = 5;
+  EN_ROUTE = 6;
+  DELIVERED = 7;
+  CANCELLED = 8;
+}
+
+enum PaymentMethod {
+  PAYMENT_METHOD_UNSPECIFIED = 0;
+  CREDIT_CARD = 1;
+  DEBIT_CARD = 2;
+  CASH = 3;
+  WALLET = 4;
+}
+
+message GeoPoint {
+  double latitude = 1;
+  double longitude = 2;
+}
+
+message MenuItem {
+  string id = 1;
+  string name = 2;
+  int32 price_cents = 3;
+  string description = 4;
+  string category = 5;
+  bool is_vegetarian = 6;
+  repeated string allergens = 7;
+  bytes thumbnail_png = 8;
+}
+
+message OrderItem {
+  MenuItem menu_item = 1;
+  int32 quantity = 2;
+  string special_instructions = 3;
+}
+
+message Customer {
+  string id = 1;
+  string name = 2;
+  string email = 3;
+  string phone = 4;
+  string address = 5;
+  GeoPoint location = 6;
+}
+
+message Order {
+  string id = 1;
+  int64 platform_transaction_id = 2;  // safe for > 2^53
+  Customer customer = 3;
+  string restaurant_id = 4;
+  repeated OrderItem items = 5;
+  OrderStatus status = 6;
+  PaymentMethod payment_method = 7;
+  string driver_id = 8;
+  string delivery_notes = 9;
+  string promo_code = 10;
+  int32 tip_cents = 11;
+  double created_at = 12;
+  double updated_at = 13;
+  int32 estimated_delivery_minutes = 14;
+  map<string, string> metadata = 15;  // field 15 uses 1-byte tag
+}
