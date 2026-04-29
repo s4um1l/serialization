@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ch10: Choosing a Serialization Format</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text-muted: #8b949e;
+    --accent: #58a6ff;
+    --accent2: #f0883e;
+    --accent3: #7ee787;
+    --accent4: #d2a8ff;
+    --accent5: #ff7b72;
+    --accent6: #79c0ff;
+    --accent7: #ffa657;
+    --accent8: #56d364;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  h1 { color: #f0f6fc; font-size: 1.8rem; margin-bottom: 0.5rem; }
+  h2 { color: var(--accent); font-size: 1.3rem; margin: 2rem 0 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+  h3 { color: var(--text); font-size: 1.1rem; margin: 1rem 0 0.5rem; }
+
+  .subtitle { color: var(--text-muted); margin-bottom: 2rem; }
+
+  .tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0;
+  }
+
+  .tab {
+    padding: 0.6rem 1.2rem;
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+  }
+
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* Radar chart */
+  .radar-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .format-toggle {
+    padding: 0.4rem 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+    user-select: none;
+  }
+
+  .format-toggle.selected {
+    border-color: var(--accent);
+    color: #f0f6fc;
+  }
+
+  .radar-container {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 2rem;
+    flex-wrap: wrap;
+  }
+
+  canvas#radarChart {
+    background: var(--surface);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+
+  .radar-legend {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    min-width: 220px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0;
+    font-size: 0.9rem;
+  }
+
+  .legend-color {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  .tooltip-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-top: 1rem;
+    min-height: 60px;
+  }
+
+  .tooltip-box .score-detail {
+    margin: 0.3rem 0;
+    font-size: 0.9rem;
+  }
+
+  .tooltip-box .rationale {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-style: italic;
+  }
+
+  /* Decision tree */
+  .tree-node {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.2rem;
+    margin-bottom: 1rem;
+    transition: all 0.3s;
+  }
+
+  .tree-node.current {
+    border-color: var(--accent);
+    box-shadow: 0 0 15px rgba(88, 166, 255, 0.15);
+  }
+
+  .tree-node.answered {
+    opacity: 0.6;
+  }
+
+  .tree-node.result-node {
+    border-color: var(--accent3);
+    background: #0d1f0d;
+  }
+
+  .tree-question {
+    font-size: 1.05rem;
+    color: #f0f6fc;
+    margin-bottom: 0.3rem;
+  }
+
+  .tree-explanation {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-bottom: 0.8rem;
+  }
+
+  .tree-buttons {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .tree-btn {
+    padding: 0.5rem 1.2rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+  }
+
+  .tree-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .tree-result {
+    font-size: 1.2rem;
+    color: var(--accent3);
+    font-weight: 600;
+  }
+
+  .tree-result-reason {
+    color: var(--text-muted);
+    margin-top: 0.3rem;
+    font-size: 0.95rem;
+  }
+
+  #resetTree {
+    padding: 0.4rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+  }
+
+  #resetTree:hover { color: var(--text); border-color: var(--text-muted); }
+
+  /* Scenario picker */
+  .scenario-select {
+    padding: 0.5rem 1rem;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.95rem;
+    margin-bottom: 1rem;
+    width: 100%;
+    max-width: 400px;
+  }
+
+  .scenario-select option { background: var(--surface); }
+
+  .scenario-desc {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+    padding: 0.8rem;
+    background: var(--surface);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+  }
+
+  .weights-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 0.6rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .weight-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+  }
+
+  .weight-label { min-width: 150px; color: var(--text-muted); }
+
+  .weight-bar-bg {
+    flex: 1;
+    height: 8px;
+    background: var(--bg);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .weight-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 4px;
+    transition: width 0.4s ease;
+  }
+
+  .weight-val { min-width: 20px; text-align: right; color: var(--text); font-weight: 600; }
+
+  .ranking-list { list-style: none; }
+
+  .ranking-item {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .ranking-item:last-child { border-bottom: none; }
+
+  .ranking-pos {
+    font-size: 1.1rem;
+    font-weight: 700;
+    min-width: 30px;
+    text-align: center;
+  }
+
+  .ranking-pos.top { color: var(--accent3); }
+
+  .ranking-name { min-width: 110px; font-weight: 600; }
+
+  .ranking-bar-bg {
+    flex: 1;
+    height: 20px;
+    background: var(--bg);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .ranking-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease;
+  }
+
+  .ranking-score {
+    min-width: 50px;
+    text-align: right;
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+
+  .recommended-tag {
+    background: var(--accent3);
+    color: var(--bg);
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+
+<h1>Chapter 10: Choosing a Serialization Format</h1>
+<p class="subtitle">Interactive decision framework for the FoodDash Wire case study</p>
+
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('radar')">Radar Chart</button>
+  <button class="tab" onclick="switchTab('tree')">Decision Tree</button>
+  <button class="tab" onclick="switchTab('scenario')">Scenario Picker</button>
+</div>
+
+<!-- ============================================================ -->
+<!-- RADAR CHART PANEL                                             -->
+<!-- ============================================================ -->
+<div id="panel-radar" class="panel active">
+  <h3>Compare Formats on 8 Criteria</h3>
+  <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:1rem;">Select 2-3 formats to overlay on the radar chart. Hover over an axis to see scores and rationale.</p>
+
+  <div class="radar-controls" id="radarToggles"></div>
+
+  <div class="radar-container">
+    <canvas id="radarChart" width="500" height="500"></canvas>
+    <div>
+      <div class="radar-legend" id="radarLegend"></div>
+      <div class="tooltip-box" id="radarTooltip">
+        <p style="color:var(--text-muted);font-size:0.9rem;">Hover over an axis on the chart to see score details.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- DECISION TREE PANEL                                           -->
+<!-- ============================================================ -->
+<div id="panel-tree" class="panel">
+  <h3>Interactive Decision Flowchart</h3>
+  <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:1rem;">Answer the questions to get a format recommendation. Each node explains the reasoning.</p>
+  <button id="resetTree" onclick="resetTree()">Reset</button>
+  <div id="treeContainer"></div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCENARIO PICKER PANEL                                         -->
+<!-- ============================================================ -->
+<div id="panel-scenario" class="panel">
+  <h3>Use-Case Scenario Picker</h3>
+  <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:1rem;">Select a scenario to see the applied weights and format rankings.</p>
+
+  <select class="scenario-select" id="scenarioSelect" onchange="renderScenario()">
+    <option value="">-- Select a scenario --</option>
+  </select>
+
+  <div id="scenarioContent"></div>
+</div>
+
+<script>
+// ===================================================================
+// DATA
+// ===================================================================
+
+const CRITERIA = [
+  "human_readability", "wire_size", "encode_speed", "decode_speed",
+  "schema_enforcement", "schema_evolution", "ecosystem_tooling", "browser_compatibility"
+];
+
+const CRITERIA_LABELS = {
+  human_readability: "Human Readability",
+  wire_size: "Wire Size",
+  encode_speed: "Encode Speed",
+  decode_speed: "Decode Speed",
+  schema_enforcement: "Schema Enforcement",
+  schema_evolution: "Schema Evolution",
+  ecosystem_tooling: "Ecosystem / Tooling",
+  browser_compatibility: "Browser Compat."
+};
+
+const FORMAT_COLORS = {
+  CSV: "#8b949e",
+  JSON: "#ffa657",
+  MessagePack: "#79c0ff",
+  CBOR: "#d2a8ff",
+  Protobuf: "#58a6ff",
+  FlatBuffers: "#7ee787",
+  Avro: "#f0883e",
+  "Cap'n Proto": "#ff7b72"
+};
+
+const SCORES = {
+  CSV:          { human_readability:5, wire_size:2, encode_speed:4, decode_speed:3, schema_enforcement:1, schema_evolution:1, ecosystem_tooling:4, browser_compatibility:3 },
+  JSON:         { human_readability:5, wire_size:1, encode_speed:3, decode_speed:2, schema_enforcement:1, schema_evolution:3, ecosystem_tooling:5, browser_compatibility:5 },
+  MessagePack:  { human_readability:1, wire_size:3, encode_speed:4, decode_speed:3, schema_enforcement:1, schema_evolution:1, ecosystem_tooling:3, browser_compatibility:1 },
+  CBOR:         { human_readability:1, wire_size:3, encode_speed:4, decode_speed:3, schema_enforcement:1, schema_evolution:1, ecosystem_tooling:2, browser_compatibility:1 },
+  Protobuf:     { human_readability:1, wire_size:5, encode_speed:4, decode_speed:4, schema_enforcement:5, schema_evolution:4, ecosystem_tooling:4, browser_compatibility:3 },
+  FlatBuffers:  { human_readability:1, wire_size:4, encode_speed:4, decode_speed:5, schema_enforcement:4, schema_evolution:3, ecosystem_tooling:3, browser_compatibility:1 },
+  Avro:         { human_readability:1, wire_size:5, encode_speed:4, decode_speed:4, schema_enforcement:4, schema_evolution:5, ecosystem_tooling:5, browser_compatibility:1 },
+  "Cap'n Proto":{ human_readability:1, wire_size:4, encode_speed:5, decode_speed:5, schema_enforcement:4, schema_evolution:4, ecosystem_tooling:2, browser_compatibility:1 }
+};
+
+const RATIONALES = {
+  CSV:          { human_readability:"Plain text, comma-separated -- readable in any text editor or spreadsheet", wire_size:"No type tags but verbose for nested data", encode_speed:"String concatenation is fast", decode_speed:"Simple line parsing but type conversion adds overhead", schema_enforcement:"No schema; columns are positional", schema_evolution:"Adding/removing columns breaks positional readers", ecosystem_tooling:"Universal: Excel, pandas, databases", browser_compatibility:"No native parsing API but libraries exist" },
+  JSON:         { human_readability:"The lingua franca of human-readable data exchange", wire_size:"Field names in every message, base64 for binary -- most verbose", encode_speed:"Reflection-based; faster with orjson but still string-heavy", decode_speed:"String parsing is inherently slow", schema_enforcement:"No wire enforcement; JSON Schema is opt-in", schema_evolution:"Self-describing keys help; no formal rules", ecosystem_tooling:"Most supported format in existence", browser_compatibility:"Native JSON.parse/stringify in every browser" },
+  MessagePack:  { human_readability:"Binary format -- not readable without tooling", wire_size:"Compact type tags; still self-describing", encode_speed:"Binary encoding without string conversion", decode_speed:"Faster than JSON but still self-describing", schema_enforcement:"No schema -- same as JSON but binary", schema_evolution:"Same problems as JSON without readability for debugging", ecosystem_tooling:"Good library support in major languages", browser_compatibility:"No native browser support; requires JS library" },
+  CBOR:         { human_readability:"Binary format -- requires tooling to inspect", wire_size:"Similar to MessagePack; efficient type encoding", encode_speed:"Efficient binary encoding", decode_speed:"Tag-based decoding is systematic", schema_enforcement:"CDDL schemas exist but rarely used", schema_evolution:"Self-describing; no formal evolution machinery", ecosystem_tooling:"IETF standard with decent support", browser_compatibility:"No native browser support" },
+  Protobuf:     { human_readability:"Binary wire format -- opaque without .proto file", wire_size:"Field tags, varint encoding, zero-value omission -- extremely compact", encode_speed:"Generated code with no reflection", decode_speed:"Tag-based dispatch with generated code", schema_enforcement:"Strong schema via .proto files", schema_evolution:"Field numbers enable safe addition/deprecation", ecosystem_tooling:"Google-backed; gRPC ecosystem", browser_compatibility:"grpc-web and protobuf.js work but not native" },
+  FlatBuffers:  { human_readability:"Binary with vtable indirection -- impossible to read", wire_size:"Compact with vtable sharing; alignment padding adds some overhead", encode_speed:"Builder pattern is fast", decode_speed:"Zero-copy: fields accessed directly from buffer", schema_enforcement:"Strong schema via .fbs files", schema_evolution:"Field addition safe; vtable has more constraints", ecosystem_tooling:"Google-backed but smaller community", browser_compatibility:"JS support exists but zero-copy less relevant in browsers" },
+  Avro:         { human_readability:"Binary -- schema required for any interpretation", wire_size:"No field tags on wire -- just values in schema order", encode_speed:"Schema-driven sequential writes", decode_speed:"Schema resolution enables efficient sequential reads", schema_enforcement:"Schema required for read and write", schema_evolution:"Reader/writer schema resolution -- the gold standard", ecosystem_tooling:"Dominant in Hadoop/Kafka ecosystem; Confluent Schema Registry; native Spark/Hive/Flink support", browser_compatibility:"No meaningful browser support" },
+  "Cap'n Proto":{ human_readability:"Binary with pointer-based layout", wire_size:"Compact but fixed-width fields and padding", encode_speed:"In-place construction: encode is a no-op", decode_speed:"Zero-copy: no deserialization step", schema_enforcement:"Strong schema via .capnp files", schema_evolution:"Field ordinals enable safe evolution", ecosystem_tooling:"Smaller community; fewer language bindings", browser_compatibility:"Minimal browser support" }
+};
+
+const SCENARIOS = {
+  "Public REST API": {
+    description: "Browser-facing API serving the FoodDash customer app. Needs native browser support, debuggability in DevTools, and broad ecosystem compatibility.",
+    weights: { human_readability:4, wire_size:1, encode_speed:1, decode_speed:1, schema_enforcement:2, schema_evolution:2, ecosystem_tooling:4, browser_compatibility:5 }
+  },
+  "Internal Microservice RPC": {
+    description: "gRPC calls between FoodDash microservices. Need strong contracts, compact payloads at 1M msg/s, and good encode/decode throughput.",
+    weights: { human_readability:1, wire_size:5, encode_speed:4, decode_speed:4, schema_enforcement:5, schema_evolution:3, ecosystem_tooling:3, browser_compatibility:1 }
+  },
+  "Data Pipeline / Kafka": {
+    description: "Events flowing into the data lake via Kafka. Schema evolves over months/years; readers and writers are decoupled.",
+    weights: { human_readability:1, wire_size:4, encode_speed:2, decode_speed:2, schema_enforcement:3, schema_evolution:5, ecosystem_tooling:4, browser_compatibility:1 }
+  },
+  "Latency-Critical Hot Path": {
+    description: "Driver-matching engine processing location pings in real time. Every microsecond of decode latency matters. Zero-copy is the goal.",
+    weights: { human_readability:0, wire_size:3, encode_speed:4, decode_speed:5, schema_enforcement:2, schema_evolution:1, ecosystem_tooling:1, browser_compatibility:0 }
+  },
+  "Quick Data Export": {
+    description: "One-off data exports for analysts or partner integrations. Must be openable in Excel or a text editor without special tools.",
+    weights: { human_readability:5, wire_size:1, encode_speed:1, decode_speed:1, schema_enforcement:1, schema_evolution:1, ecosystem_tooling:5, browser_compatibility:2 }
+  }
+};
+
+const FORMATS = Object.keys(SCORES);
+
+// ===================================================================
+// TAB SWITCHING
+// ===================================================================
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelector(`.tab[onclick="switchTab('${name}')"]`).classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+}
+
+// ===================================================================
+// RADAR CHART
+// ===================================================================
+
+let selectedFormats = ["JSON", "Protobuf"];
+let hoveredAxis = -1;
+
+function initRadar() {
+  const container = document.getElementById('radarToggles');
+  FORMATS.forEach(fmt => {
+    const btn = document.createElement('button');
+    btn.className = 'format-toggle' + (selectedFormats.includes(fmt) ? ' selected' : '');
+    btn.textContent = fmt;
+    btn.style.borderColor = selectedFormats.includes(fmt) ? FORMAT_COLORS[fmt] : '';
+    btn.onclick = () => {
+      if (selectedFormats.includes(fmt)) {
+        if (selectedFormats.length <= 1) return;
+        selectedFormats = selectedFormats.filter(f => f !== fmt);
+        btn.classList.remove('selected');
+        btn.style.borderColor = '';
+      } else {
+        if (selectedFormats.length >= 4) return;
+        selectedFormats.push(fmt);
+        btn.classList.add('selected');
+        btn.style.borderColor = FORMAT_COLORS[fmt];
+      }
+      drawRadar();
+      updateLegend();
+    };
+    container.appendChild(btn);
+  });
+
+  const canvas = document.getElementById('radarChart');
+  canvas.addEventListener('mousemove', onRadarMouseMove);
+  canvas.addEventListener('mouseleave', () => { hoveredAxis = -1; drawRadar(); updateTooltip(); });
+
+  drawRadar();
+  updateLegend();
+}
+
+function drawRadar() {
+  const canvas = document.getElementById('radarChart');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
+  const R = Math.min(W, H) * 0.38;
+  const n = CRITERIA.length;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#161b22';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid rings
+  for (let ring = 1; ring <= 5; ring++) {
+    const r = (ring / 5) * R;
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const angle = (Math.PI * 2 * i / n) - Math.PI / 2;
+      const x = cx + r * Math.cos(angle);
+      const y = cy + r * Math.sin(angle);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = ring === 5 ? '#30363d' : '#21262d';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Ring label
+    if (ring % 2 === 1 || ring === 5) {
+      ctx.fillStyle = '#484f58';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(ring.toString(), cx + 2, cy - r + 12);
+    }
+  }
+
+  // Axis lines and labels
+  for (let i = 0; i < n; i++) {
+    const angle = (Math.PI * 2 * i / n) - Math.PI / 2;
+    const ex = cx + R * Math.cos(angle);
+    const ey = cy + R * Math.sin(angle);
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(ex, ey);
+    ctx.strokeStyle = i === hoveredAxis ? '#58a6ff' : '#21262d';
+    ctx.lineWidth = i === hoveredAxis ? 2 : 1;
+    ctx.stroke();
+
+    // Label
+    const lR = R + 30;
+    const lx = cx + lR * Math.cos(angle);
+    const ly = cy + lR * Math.sin(angle);
+    ctx.fillStyle = i === hoveredAxis ? '#f0f6fc' : '#8b949e';
+    ctx.font = (i === hoveredAxis ? 'bold ' : '') + '12px sans-serif';
+    ctx.textAlign = Math.abs(angle) < 0.1 || Math.abs(angle - Math.PI) < 0.1 ? 'center' :
+                    (lx > cx ? 'left' : 'right');
+    ctx.textBaseline = Math.abs(angle + Math.PI/2) < 0.3 ? 'bottom' :
+                       Math.abs(angle - Math.PI/2) < 0.3 ? 'top' : 'middle';
+    ctx.fillText(CRITERIA_LABELS[CRITERIA[i]], lx, ly);
+  }
+
+  // Format polygons
+  selectedFormats.forEach((fmt, fi) => {
+    const scores = SCORES[fmt];
+    const color = FORMAT_COLORS[fmt];
+
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const idx = i % n;
+      const val = scores[CRITERIA[idx]];
+      const r = (val / 5) * R;
+      const angle = (Math.PI * 2 * idx / n) - Math.PI / 2;
+      const x = cx + r * Math.cos(angle);
+      const y = cy + r * Math.sin(angle);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+
+    ctx.fillStyle = color + '25';
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Dots
+    for (let i = 0; i < n; i++) {
+      const val = scores[CRITERIA[i]];
+      const r = (val / 5) * R;
+      const angle = (Math.PI * 2 * i / n) - Math.PI / 2;
+      const x = cx + r * Math.cos(angle);
+      const y = cy + r * Math.sin(angle);
+
+      ctx.beginPath();
+      ctx.arc(x, y, i === hoveredAxis ? 5 : 3, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+  });
+}
+
+function onRadarMouseMove(e) {
+  const canvas = document.getElementById('radarChart');
+  const rect = canvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+  const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const dx = mx - cx, dy = my - cy;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+
+  if (dist < 20) { hoveredAxis = -1; drawRadar(); updateTooltip(); return; }
+
+  let angle = Math.atan2(dy, dx) + Math.PI / 2;
+  if (angle < 0) angle += Math.PI * 2;
+
+  const n = CRITERIA.length;
+  const sector = Math.PI * 2 / n;
+  const idx = Math.round(angle / sector) % n;
+
+  if (idx !== hoveredAxis) {
+    hoveredAxis = idx;
+    drawRadar();
+    updateTooltip();
+  }
+}
+
+function updateTooltip() {
+  const box = document.getElementById('radarTooltip');
+  if (hoveredAxis < 0) {
+    box.innerHTML = '<p style="color:var(--text-muted);font-size:0.9rem;">Hover over an axis on the chart to see score details.</p>';
+    return;
+  }
+
+  const criterion = CRITERIA[hoveredAxis];
+  let html = '<h3 style="margin-bottom:0.5rem;">' + CRITERIA_LABELS[criterion] + '</h3>';
+
+  selectedFormats.forEach(fmt => {
+    const score = SCORES[fmt][criterion];
+    const rationale = RATIONALES[fmt][criterion];
+    const color = FORMAT_COLORS[fmt];
+    const dots = '';
+    for (let i = 0; i < 5; i++) {}
+    const filled = Array.from({length: score}, () => '<span style="color:' + color + '">&#9679;</span>').join('');
+    const empty = Array.from({length: 5 - score}, () => '<span style="color:#30363d">&#9679;</span>').join('');
+    html += '<div class="score-detail"><strong style="color:' + color + '">' + fmt + '</strong>: ' + filled + empty + ' (' + score + '/5)</div>';
+    html += '<div class="rationale">' + rationale + '</div>';
+  });
+
+  box.innerHTML = html;
+}
+
+function updateLegend() {
+  const box = document.getElementById('radarLegend');
+  let html = '<h3 style="margin-bottom:0.5rem;font-size:0.95rem;">Selected Formats</h3>';
+  selectedFormats.forEach(fmt => {
+    html += '<div class="legend-item"><div class="legend-color" style="background:' + FORMAT_COLORS[fmt] + '"></div>' + fmt + '</div>';
+  });
+  if (selectedFormats.length < 4) {
+    html += '<p style="color:var(--text-muted);font-size:0.8rem;margin-top:0.5rem;">Click a format above to add (max 4).</p>';
+  }
+  box.innerHTML = html;
+}
+
+// ===================================================================
+// DECISION TREE
+// ===================================================================
+
+const TREE = [
+  {
+    id: 0,
+    question: "Is the consumer a web browser?",
+    explanation: "Browsers have native JSON.parse/stringify but no native support for binary formats. If you need to serve a browser client directly, this is the strongest constraint in the decision.",
+    yes: { result: "JSON", reason: "Native browser support is unmatched. JSON.parse() is built into every browser engine, optimized at the C++ level. DevTools render it natively. The entire frontend ecosystem expects it." },
+    no: 1
+  },
+  {
+    id: 1,
+    question: "Do you need a schema contract between producer and consumer?",
+    explanation: "Schema contracts prevent teams from breaking each other's services with uncoordinated changes. If producers and consumers are maintained by different teams, schema enforcement catches incompatibilities at build time instead of in production.",
+    yes: 2,
+    no: { result: "JSON or MessagePack", reason: "Without schema requirements, JSON gives you maximum flexibility and debuggability. If you need smaller payloads without schema overhead, MessagePack is a binary drop-in replacement." }
+  },
+  {
+    id: 2,
+    question: "Is this a data pipeline or long-lived storage (Kafka, data lake)?",
+    explanation: "Data pipelines have a unique constraint: data written today must be readable months or years from now, even as the schema evolves. Reader/writer schema resolution is critical.",
+    yes: { result: "Avro", reason: "Avro's reader/writer schema resolution was designed for exactly this case. The Confluent Schema Registry provides centralized evolution management. No field tags on the wire means maximum compactness for storage." },
+    no: 3
+  },
+  {
+    id: 3,
+    question: "Is this RPC between microservices?",
+    explanation: "Service-to-service RPC benefits from an integrated ecosystem: load balancing, service mesh, streaming, deadlines, interceptors. The gRPC ecosystem provides all of these on top of Protobuf.",
+    yes: { result: "Protobuf (with gRPC)", reason: "The gRPC ecosystem is unmatched for service-to-service RPC: bidirectional streaming, deadline propagation, interceptors, load balancing, and service mesh integration. Protobuf's compact wire format handles high throughput." },
+    no: 4
+  },
+  {
+    id: 4,
+    question: "Is zero-copy decode latency critical (microsecond-sensitive hot path)?",
+    explanation: "Zero-copy formats (FlatBuffers, Cap'n Proto) skip deserialization entirely -- fields are accessed directly from the wire buffer via pointer arithmetic. This matters when decode time is a significant fraction of your processing budget.",
+    yes: { result: "FlatBuffers or Cap'n Proto", reason: "Both offer zero-copy decoding. FlatBuffers has broader adoption and Google backing. Cap'n Proto has a slight edge in encode speed (in-place construction). Choose based on your language ecosystem." },
+    no: { result: "Protobuf", reason: "Protobuf is a strong default for schema-based internal communication. Good balance of compactness, speed, schema safety, and ecosystem support." }
+  }
+];
+
+let treeState = [];
+
+function initTree() { resetTree(); }
+
+function resetTree() {
+  treeState = [];
+  renderTree();
+}
+
+function renderTree() {
+  const container = document.getElementById('treeContainer');
+  let html = '';
+
+  // Render answered nodes
+  treeState.forEach((entry, i) => {
+    const node = TREE[entry.nodeId];
+    html += '<div class="tree-node answered">';
+    html += '<div class="tree-question">' + node.question + '</div>';
+    html += '<div style="color:var(--accent);font-size:0.9rem;margin-top:0.3rem;">Answered: ' + (entry.answer ? 'Yes' : 'No') + '</div>';
+    html += '</div>';
+  });
+
+  // Current node
+  const currentNodeId = treeState.length === 0 ? 0 :
+    (function() {
+      const last = treeState[treeState.length - 1];
+      const node = TREE[last.nodeId];
+      const next = last.answer ? node.yes : node.no;
+      return typeof next === 'number' ? next : null;
+    })();
+
+  if (currentNodeId !== null) {
+    const node = TREE[currentNodeId];
+    html += '<div class="tree-node current">';
+    html += '<div class="tree-question">' + node.question + '</div>';
+    html += '<div class="tree-explanation">' + node.explanation + '</div>';
+    html += '<div class="tree-buttons">';
+    html += '<button class="tree-btn" onclick="answerTree(' + currentNodeId + ', true)">Yes</button>';
+    html += '<button class="tree-btn" onclick="answerTree(' + currentNodeId + ', false)">No</button>';
+    html += '</div></div>';
+  } else if (treeState.length > 0) {
+    // Show result
+    const last = treeState[treeState.length - 1];
+    const node = TREE[last.nodeId];
+    const result = last.answer ? node.yes : node.no;
+    if (typeof result === 'object') {
+      html += '<div class="tree-node result-node">';
+      html += '<div class="tree-result">Recommendation: ' + result.result + '</div>';
+      html += '<div class="tree-result-reason">' + result.reason + '</div>';
+      html += '</div>';
+    }
+  }
+
+  container.innerHTML = html;
+}
+
+function answerTree(nodeId, answer) {
+  treeState.push({ nodeId, answer });
+  renderTree();
+}
+
+// ===================================================================
+// SCENARIO PICKER
+// ===================================================================
+
+function initScenario() {
+  const sel = document.getElementById('scenarioSelect');
+  Object.keys(SCENARIOS).forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    sel.appendChild(opt);
+  });
+}
+
+function renderScenario() {
+  const name = document.getElementById('scenarioSelect').value;
+  const content = document.getElementById('scenarioContent');
+  if (!name) { content.innerHTML = ''; return; }
+
+  const scenario = SCENARIOS[name];
+  let html = '';
+
+  // Description
+  html += '<div class="scenario-desc">' + scenario.description + '</div>';
+
+  // Weights
+  html += '<h3>Criteria Weights</h3>';
+  html += '<div class="weights-grid">';
+  CRITERIA.forEach(c => {
+    const w = scenario.weights[c] || 0;
+    html += '<div class="weight-row">';
+    html += '<span class="weight-label">' + CRITERIA_LABELS[c] + '</span>';
+    html += '<div class="weight-bar-bg"><div class="weight-bar-fill" style="width:' + (w * 20) + '%"></div></div>';
+    html += '<span class="weight-val">' + w + '</span>';
+    html += '</div>';
+  });
+  html += '</div>';
+
+  // Compute rankings
+  const rankings = FORMATS.map(fmt => {
+    let total = 0;
+    CRITERIA.forEach(c => { total += (SCORES[fmt][c] || 0) * (scenario.weights[c] || 0); });
+    return { name: fmt, score: total };
+  });
+  rankings.sort((a, b) => b.score - a.score);
+  const maxScore = rankings[0].score;
+
+  // Rankings
+  html += '<h3>Format Rankings</h3>';
+  html += '<ul class="ranking-list">';
+  rankings.forEach((r, i) => {
+    const pct = maxScore > 0 ? (r.score / maxScore) * 100 : 0;
+    const color = FORMAT_COLORS[r.name];
+    html += '<li class="ranking-item">';
+    html += '<span class="ranking-pos ' + (i === 0 ? 'top' : '') + '">#' + (i + 1) + '</span>';
+    html += '<span class="ranking-name" style="color:' + color + '">' + r.name + '</span>';
+    html += '<div class="ranking-bar-bg"><div class="ranking-bar-fill" style="width:' + pct + '%;background:' + color + '"></div></div>';
+    html += '<span class="ranking-score">' + r.score + '</span>';
+    if (i === 0) html += '<span class="recommended-tag">recommended</span>';
+    html += '</li>';
+  });
+  html += '</ul>';
+
+  content.innerHTML = html;
+}
+
+// ===================================================================
+// INIT
+// ===================================================================
+
+initRadar();
+initTree();
+initScenario();
+</script>
+</body>
+</html>
