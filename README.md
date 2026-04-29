@@ -122,6 +122,57 @@ The `Order` model is deliberately designed to stress-test every format:
 - **Optional fields** (driver, delivery notes): presence/absence encoding
 - **Enums** (order status, payment method): serialized differently by every format
 
+## What the Benchmarks Teach You
+
+Every format in this repo encodes the same FoodDash Order. Here's what the numbers reveal (run `uv run python -m chapters.ch11_synthesis` to reproduce):
+
+### Wire size: the obvious win
+
+```
+Typical order (3 items):  JSON 1,661 B → MsgPack 1,289 B (22% smaller) → Protobuf 715 B (57% smaller)
+Large order (20 items):   JSON 22,477 B → MsgPack 16,290 B (28% smaller) → Protobuf 13,849 B (38% smaller)
+```
+
+Where do the savings come from?
+- **JSON → MsgPack:** Same data model, but binary encoding eliminates quotes, colons, commas, and repeated `"field_name"` syntax. Native binary data (no base64 bloat).
+- **MsgPack → Protobuf:** Field names replaced by 1-2 byte numeric tags. Integers use varints (small values = fewer bytes). No self-describing overhead.
+- **Avro goes even further:** No field tags at all — fields encoded in schema order. The reader must have the schema, but the payload is the smallest of any schema-based format.
+
+### Speed: it's not what you'd expect
+
+The from-scratch Python implementations in this repo show Protobuf *slower* than JSON stdlib. This is **not** representative of production:
+
+- `json.dumps()` is a C extension — highly optimized.
+- Our Protobuf encoder is pure Python, written for clarity, not speed.
+- Production `protobuf` (C++), `flatc` (C++), and `orjson` (Rust) are 10-100x faster than our from-scratch versions.
+
+The takeaway: **don't benchmark implementation languages, benchmark wire formats.** The wire size savings are real and language-independent. The speed depends on which library you use.
+
+### What actually matters at scale
+
+At 1 million messages per second, every byte and microsecond compounds:
+
+| Metric | JSON | MsgPack | Protobuf |
+|--------|------|---------|----------|
+| Wire size (typical) | 1,661 B | 1,289 B | 715 B |
+| Bandwidth at 1M msg/s | 1.6 GB/s | 1.2 GB/s | 0.7 GB/s |
+| Daily transfer | 138 TB | 107 TB | 59 TB |
+| Transfer cost ($0.01/GB) | $1,380/day | $1,070/day | $590/day |
+
+That's a **$290K/year** bandwidth savings just from switching JSON to Protobuf — before considering CPU. Add zstd compression and Protobuf payloads shrink another 30-40%.
+
+### The real lesson
+
+There is no single best format. The right answer depends on the boundary:
+
+- **Browser ↔ API Gateway:** JSON. Browsers speak it natively. DevTools can read it. The ecosystem is unmatched.
+- **Service ↔ Service (gRPC):** Protobuf. Schema-enforced, compact, code generation, streaming.
+- **Latency-critical hot path:** FlatBuffers or Cap'n Proto. Zero-copy means you read 2 fields from a 30-field message without deserializing the other 28.
+- **Data pipeline (Kafka):** Avro. Writer/reader schema resolution means data written 6 months ago with schema v3 is readable by today's v7 code — automatically.
+- **Cold storage:** Avro + zstd. Schema travels with the data, compression handles the rest.
+
+Most real systems use **multiple formats at different boundaries.** FoodDash uses all five. That's not a sign of indecision — it's a sign of understanding the trade-offs.
+
 ## Browse All Visuals
 
 Open [visuals.html](visuals.html) for an interactive index of all chapter visualizations.
