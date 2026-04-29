@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Appendix B: Streaming Serialization Visualizer</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface2: #21262d;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text-dim: #8b949e;
+  --accent: #58a6ff;
+  --purple: #bc8cff;
+  --cyan: #56d4dd;
+  --green: #3fb950;
+  --orange: #d29922;
+  --red: #f85149;
+  --pink: #db61a2;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 0 0 40px;
+}
+h1 { text-align: center; padding: 24px 16px 8px; font-size: 1.4rem; color: var(--accent); }
+.subtitle { text-align: center; color: var(--text-dim); font-size: 0.85rem; margin-bottom: 20px; }
+
+.container { max-width: 1000px; margin: 0 auto; padding: 0 16px; }
+
+/* Controls */
+.controls {
+  display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.btn {
+  padding: 8px 18px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); color: var(--text); cursor: pointer;
+  font-family: inherit; font-size: 0.85rem; transition: all 0.15s;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.btn-green { border-color: var(--green); }
+.btn-green:hover, .btn-green.active { background: var(--green); color: var(--bg); }
+.speed-control { display: flex; align-items: center; gap: 8px; }
+.speed-control label { color: var(--text-dim); font-size: 0.75rem; }
+.speed-control input { width: 80px; }
+
+/* Comparison layout */
+.comparison {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;
+}
+@media (max-width: 700px) { .comparison { grid-template-columns: 1fr; } }
+
+.panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 16px; min-height: 400px;
+}
+.panel h2 { font-size: 0.95rem; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+.panel-label { font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; }
+
+/* Wire visualization */
+.wire-box {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px; margin-bottom: 12px; min-height: 50px;
+  font-size: 0.75rem; overflow-x: auto; white-space: nowrap;
+  position: relative;
+}
+.wire-cursor {
+  display: inline-block; width: 2px; height: 1em;
+  background: var(--accent); animation: blink 0.6s step-end infinite;
+  vertical-align: middle; margin-left: 2px;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+.wire-chunk {
+  display: inline-block; padding: 2px 4px; margin: 1px; border-radius: 3px;
+  font-size: 0.7rem; transition: all 0.3s; opacity: 0;
+  animation: fadeIn 0.3s forwards;
+}
+@keyframes fadeIn { to { opacity: 1; } }
+
+/* Record cards */
+.records-area {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 250px; overflow-y: auto;
+}
+.record-card {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 12px; font-size: 0.75rem;
+  opacity: 0; animation: slideIn 0.3s forwards;
+}
+@keyframes slideIn { from { transform: translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
+.record-card .rec-id { color: var(--accent); }
+.record-card .rec-detail { color: var(--text-dim); }
+
+/* Stats bar */
+.stats-bar {
+  display: flex; gap: 16px; flex-wrap: wrap; justify-content: center;
+  margin-bottom: 20px;
+}
+.stat {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 16px; text-align: center; min-width: 130px;
+}
+.stat-val { font-size: 1.2rem; font-weight: bold; }
+.stat-lbl { font-size: 0.65rem; color: var(--text-dim); text-transform: uppercase; margin-top: 2px; }
+.stat-val.json-color { color: var(--orange); }
+.stat-val.stream-color { color: var(--green); }
+
+/* Timeline */
+.timeline-section {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 16px; margin-bottom: 20px;
+}
+.timeline-section h2 { font-size: 0.95rem; color: var(--accent); margin-bottom: 12px; }
+.timeline-canvas { width: 100%; height: 120px; }
+</style>
+</head>
+<body>
+<h1>Appendix B: Streaming Serialization</h1>
+<p class="subtitle">Array vs Stream -- watch records arrive one by one and compare time-to-first-record</p>
+
+<div class="container">
+  <!-- Controls -->
+  <div class="controls">
+    <button class="btn btn-green" id="btnStart" onclick="startAnimation()">Start</button>
+    <button class="btn" onclick="resetAnimation()">Reset</button>
+    <div class="speed-control">
+      <label>Records:</label>
+      <select id="numRecords" onchange="resetAnimation()" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-family:inherit;">
+        <option value="5" selected>5</option>
+        <option value="10">10</option>
+        <option value="20">20</option>
+      </select>
+    </div>
+    <div class="speed-control">
+      <label>Speed:</label>
+      <input type="range" id="speedSlider" min="1" max="10" value="5">
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-bar">
+    <div class="stat"><div class="stat-val json-color" id="jsonTTFR">--</div><div class="stat-lbl">JSON Array TTFR</div></div>
+    <div class="stat"><div class="stat-val stream-color" id="streamTTFR">--</div><div class="stat-lbl">NDJSON Stream TTFR</div></div>
+    <div class="stat"><div class="stat-val json-color" id="jsonDone">--</div><div class="stat-lbl">JSON All Done</div></div>
+    <div class="stat"><div class="stat-val stream-color" id="streamDone">--</div><div class="stat-lbl">NDJSON All Done</div></div>
+  </div>
+
+  <!-- Side-by-side comparison -->
+  <div class="comparison">
+    <!-- JSON Array panel -->
+    <div class="panel">
+      <h2><span style="color:var(--orange)">JSON Array</span> <span class="panel-label" id="jsonStatus">waiting</span></h2>
+      <div class="wire-box" id="jsonWire"></div>
+      <p style="font-size:0.7rem;color:var(--text-dim);margin-bottom:8px">Decoded records (available after full parse):</p>
+      <div class="records-area" id="jsonRecords"></div>
+    </div>
+    <!-- NDJSON Stream panel -->
+    <div class="panel">
+      <h2><span style="color:var(--green)">NDJSON Stream</span> <span class="panel-label" id="streamStatus">waiting</span></h2>
+      <div class="wire-box" id="streamWire"></div>
+      <p style="font-size:0.7rem;color:var(--text-dim);margin-bottom:8px">Decoded records (available as they arrive):</p>
+      <div class="records-area" id="streamRecords"></div>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="timeline-section">
+    <h2>Time-to-First-Record Timeline</h2>
+    <canvas class="timeline-canvas" id="timelineCanvas"></canvas>
+  </div>
+</div>
+
+<script>
+// Sample records
+function makeRecords(n) {
+  const records = [];
+  for (let i = 0; i < n; i++) {
+    records.push({
+      order_id: `order-${String(i).padStart(4,'0')}`,
+      restaurant: 'Burger Palace',
+      total: 1299 + i * 100,
+      status: ['placed','confirmed','preparing','ready','en_route'][i % 5]
+    });
+  }
+  return records;
+}
+
+let animRunning = false;
+let animFrames = [];
+let currentFrame = 0;
+let animTimer = null;
+
+function getSpeed() {
+  return 600 - (parseInt(document.getElementById('speedSlider').value) - 1) * 55;
+}
+
+function resetAnimation() {
+  animRunning = false;
+  if (animTimer) clearInterval(animTimer);
+  animTimer = null;
+  currentFrame = 0;
+  document.getElementById('jsonWire').innerHTML = '';
+  document.getElementById('streamWire').innerHTML = '';
+  document.getElementById('jsonRecords').innerHTML = '';
+  document.getElementById('streamRecords').innerHTML = '';
+  document.getElementById('jsonStatus').textContent = 'waiting';
+  document.getElementById('streamStatus').textContent = 'waiting';
+  document.getElementById('jsonTTFR').textContent = '--';
+  document.getElementById('streamTTFR').textContent = '--';
+  document.getElementById('jsonDone').textContent = '--';
+  document.getElementById('streamDone').textContent = '--';
+  document.getElementById('btnStart').textContent = 'Start';
+  clearTimeline();
+}
+
+function startAnimation() {
+  if (animRunning) {
+    resetAnimation();
+    return;
+  }
+  animRunning = true;
+  document.getElementById('btnStart').textContent = 'Stop';
+
+  const n = parseInt(document.getElementById('numRecords').value);
+  const records = makeRecords(n);
+
+  // Build JSON array string and NDJSON lines
+  const jsonStr = JSON.stringify(records);
+  const ndjsonLines = records.map(r => JSON.stringify(r));
+
+  // Animation state
+  let streamRecordIdx = 0;
+  let streamCharIdx = 0;
+  let jsonCharIdx = 0;
+  let jsonDone = false;
+  let streamDone = false;
+  let tick = 0;
+
+  const jsonWire = document.getElementById('jsonWire');
+  const streamWire = document.getElementById('streamWire');
+  const jsonRecords = document.getElementById('jsonRecords');
+  const streamRecords = document.getElementById('streamRecords');
+
+  // Send ~charsPerTick characters per tick (stream sends fewer since it's per-record)
+  const charsPerTick = Math.max(3, Math.floor(jsonStr.length / (n * 3)));
+  let streamTTFRtick = null;
+  let jsonTTFRtick = null;
+  let streamDoneTick = null;
+  let jsonDoneTick = null;
+
+  document.getElementById('jsonStatus').textContent = 'receiving...';
+  document.getElementById('streamStatus').textContent = 'receiving...';
+
+  function step() {
+    tick++;
+    const speed = getSpeed();
+
+    // -- NDJSON Stream: send chars from current record --
+    if (!streamDone) {
+      if (streamRecordIdx < ndjsonLines.length) {
+        const line = ndjsonLines[streamRecordIdx];
+        const end = Math.min(streamCharIdx + charsPerTick, line.length);
+        for (let i = streamCharIdx; i < end; i++) {
+          const span = document.createElement('span');
+          span.className = 'wire-chunk';
+          span.style.color = 'var(--green)';
+          span.textContent = line[i];
+          streamWire.appendChild(span);
+        }
+        streamCharIdx = end;
+
+        if (streamCharIdx >= line.length) {
+          // Newline
+          const nl = document.createElement('span');
+          nl.className = 'wire-chunk';
+          nl.style.color = 'var(--text-dim)';
+          nl.textContent = '\\n';
+          streamWire.appendChild(nl);
+
+          // Record available immediately
+          const rec = records[streamRecordIdx];
+          const card = document.createElement('div');
+          card.className = 'record-card';
+          card.innerHTML = `<span class="rec-id">${rec.order_id}</span> <span class="rec-detail">${rec.restaurant} -- $${(rec.total/100).toFixed(2)} -- ${rec.status}</span>`;
+          streamRecords.appendChild(card);
+
+          if (streamTTFRtick === null) {
+            streamTTFRtick = tick;
+            document.getElementById('streamTTFR').textContent = `tick ${tick}`;
+          }
+
+          streamRecordIdx++;
+          streamCharIdx = 0;
+        }
+      } else {
+        streamDone = true;
+        streamDoneTick = tick;
+        document.getElementById('streamStatus').textContent = 'complete';
+        document.getElementById('streamDone').textContent = `tick ${tick}`;
+      }
+    }
+
+    // -- JSON Array: send chars, only decode when ALL received --
+    if (!jsonDone) {
+      const end = Math.min(jsonCharIdx + charsPerTick, jsonStr.length);
+      for (let i = jsonCharIdx; i < end; i++) {
+        const span = document.createElement('span');
+        span.className = 'wire-chunk';
+        span.style.color = 'var(--orange)';
+        span.textContent = jsonStr[i];
+        jsonWire.appendChild(span);
+      }
+      jsonCharIdx = end;
+
+      if (jsonCharIdx >= jsonStr.length) {
+        // Full array received -- NOW parse
+        jsonDone = true;
+        jsonDoneTick = tick;
+        jsonTTFRtick = tick;
+        document.getElementById('jsonTTFR').textContent = `tick ${tick}`;
+        document.getElementById('jsonDone').textContent = `tick ${tick}`;
+        document.getElementById('jsonStatus').textContent = 'complete';
+
+        // Reveal all records at once
+        records.forEach((rec, i) => {
+          setTimeout(() => {
+            const card = document.createElement('div');
+            card.className = 'record-card';
+            card.innerHTML = `<span class="rec-id">${rec.order_id}</span> <span class="rec-detail">${rec.restaurant} -- $${(rec.total/100).toFixed(2)} -- ${rec.status}</span>`;
+            jsonRecords.appendChild(card);
+          }, i * 50);
+        });
+      }
+    }
+
+    // Auto-scroll wire boxes
+    jsonWire.scrollLeft = jsonWire.scrollWidth;
+    streamWire.scrollLeft = streamWire.scrollWidth;
+
+    // Draw timeline
+    drawTimeline(tick, streamTTFRtick, jsonTTFRtick, streamDoneTick, jsonDoneTick);
+
+    if (jsonDone && streamDone) {
+      clearInterval(animTimer);
+      animTimer = null;
+      animRunning = false;
+      document.getElementById('btnStart').textContent = 'Start';
+    }
+  }
+
+  animTimer = setInterval(step, getSpeed());
+  // Also update interval when speed changes
+  document.getElementById('speedSlider').addEventListener('input', () => {
+    if (animTimer) {
+      clearInterval(animTimer);
+      animTimer = setInterval(step, getSpeed());
+    }
+  });
+}
+
+// Timeline
+function clearTimeline() {
+  const canvas = document.getElementById('timelineCanvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = canvas.offsetWidth * 2;
+  canvas.height = 240;
+  ctx.scale(2, 2);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#161b22';
+  ctx.fillRect(0, 0, canvas.width / 2, canvas.height / 2);
+  ctx.fillStyle = '#8b949e';
+  ctx.font = '11px monospace';
+  ctx.fillText('Press Start to begin', 20, 60);
+}
+
+function drawTimeline(maxTick, sTTFR, jTTFR, sDone, jDone) {
+  const canvas = document.getElementById('timelineCanvas');
+  const ctx = canvas.getContext('2d');
+  const w = canvas.offsetWidth;
+  const h = 120;
+  canvas.width = w * 2;
+  canvas.height = h * 2;
+  ctx.scale(2, 2);
+
+  ctx.fillStyle = '#161b22';
+  ctx.fillRect(0, 0, w, h);
+
+  const pad = 40;
+  const barH = 20;
+  const totalTicks = Math.max(maxTick, 10);
+  const scale = (w - pad * 2) / totalTicks;
+
+  // Axis
+  ctx.strokeStyle = '#30363d';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad, 95);
+  ctx.lineTo(w - pad, 95);
+  ctx.stroke();
+
+  // Tick marks
+  ctx.fillStyle = '#8b949e';
+  ctx.font = '9px monospace';
+  for (let t = 0; t <= totalTicks; t += Math.max(1, Math.floor(totalTicks / 10))) {
+    const x = pad + t * scale;
+    ctx.fillText(t, x - 3, 108);
+    ctx.beginPath();
+    ctx.moveTo(x, 92);
+    ctx.lineTo(x, 97);
+    ctx.stroke();
+  }
+
+  // JSON bar
+  const jY = 20;
+  ctx.fillStyle = 'rgba(210,153,34,0.2)';
+  ctx.fillRect(pad, jY, maxTick * scale, barH);
+  if (jTTFR !== null) {
+    ctx.fillStyle = 'rgba(210,153,34,0.6)';
+    ctx.fillRect(pad, jY, jTTFR * scale, barH);
+    // TTFR marker
+    ctx.fillStyle = '#d29922';
+    ctx.beginPath();
+    ctx.moveTo(pad + jTTFR * scale, jY - 4);
+    ctx.lineTo(pad + jTTFR * scale - 4, jY - 10);
+    ctx.lineTo(pad + jTTFR * scale + 4, jY - 10);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#d29922';
+  ctx.font = '10px monospace';
+  ctx.fillText('JSON Array', pad, jY - 2);
+
+  // NDJSON bar
+  const sY = 55;
+  ctx.fillStyle = 'rgba(63,185,80,0.2)';
+  ctx.fillRect(pad, sY, maxTick * scale, barH);
+  if (sTTFR !== null) {
+    ctx.fillStyle = 'rgba(63,185,80,0.6)';
+    ctx.fillRect(pad, sY, sTTFR * scale, barH);
+    ctx.fillStyle = '#3fb950';
+    ctx.beginPath();
+    ctx.moveTo(pad + sTTFR * scale, sY - 4);
+    ctx.lineTo(pad + sTTFR * scale - 4, sY - 10);
+    ctx.lineTo(pad + sTTFR * scale + 4, sY - 10);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#3fb950';
+  ctx.font = '10px monospace';
+  ctx.fillText('NDJSON Stream', pad, sY - 2);
+
+  // TTFR label
+  if (sTTFR !== null && jTTFR !== null) {
+    ctx.fillStyle = '#e6edf3';
+    ctx.font = '10px monospace';
+    const speedup = jTTFR / Math.max(sTTFR, 1);
+    ctx.fillText(`TTFR: stream ${speedup.toFixed(1)}x faster`, pad, 90);
+  }
+}
+
+clearTimeline();
+</script>
+</body>
+</html>

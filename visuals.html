@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Serialization Visuals Index</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface2: #21262d;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text-dim: #8b949e;
+  --accent: #58a6ff;
+  --purple: #bc8cff;
+  --cyan: #56d4dd;
+  --green: #3fb950;
+  --orange: #d29922;
+  --red: #f85149;
+  --pink: #db61a2;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 0 0 60px;
+}
+
+/* Header */
+.header {
+  text-align: center;
+  padding: 40px 16px 32px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 32px;
+}
+.header h1 {
+  font-size: 1.6rem;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.header p {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  max-width: 600px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+/* Grid */
+.container { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+/* Section divider */
+.section-divider {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 24px 0 8px;
+}
+.section-divider .line {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.section-divider .label {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  white-space: nowrap;
+}
+
+/* Card */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+.card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(88, 166, 255, 0.1);
+}
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.card:hover::before { opacity: 1; }
+
+/* Badge */
+.card-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+.badge-chapter {
+  background: rgba(88, 166, 255, 0.15);
+  color: var(--accent);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+}
+.badge-appendix {
+  background: rgba(188, 140, 255, 0.15);
+  color: var(--purple);
+  border: 1px solid rgba(188, 140, 255, 0.3);
+}
+
+.card-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+}
+.card-desc {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+}
+.tag {
+  font-size: 0.65rem;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: var(--surface2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+.tag-interactive { border-color: var(--green); color: var(--green); }
+.tag-animation { border-color: var(--cyan); color: var(--cyan); }
+.tag-chart { border-color: var(--orange); color: var(--orange); }
+.tag-hex { border-color: var(--pink); color: var(--pink); }
+.tag-calculator { border-color: var(--purple); color: var(--purple); }
+
+/* Footer */
+.footer {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text-dim);
+  font-size: 0.7rem;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Serialization Visuals</h1>
+  <p>Interactive visualizations for every chapter. Each page is self-contained -- no dependencies, no build step. Click a card to explore.</p>
+</div>
+
+<div class="container">
+  <div class="grid">
+
+    <!-- Section: Chapters -->
+    <div class="section-divider">
+      <div class="line"></div>
+      <div class="label">Chapters</div>
+      <div class="line"></div>
+    </div>
+
+    <!-- Ch00 -->
+    <a class="card" href="chapters/ch00_foundations/visual.html">
+      <div class="card-top">
+        <div class="badge badge-chapter">00</div>
+        <div class="card-title">Memory Layout Explorer</div>
+      </div>
+      <div class="card-desc">Explore how Python objects live in memory vs the wire. See the overhead of object headers, pointers, and padding.</div>
+      <div class="card-tags">
+        <span class="tag tag-interactive">interactive</span>
+        <span class="tag tag-hex">hex-dump</span>
+      </div>
+    </a>
+
+    <!-- Ch01 -->
+    <a class="card" href="chapters/ch01_plain_text_csv/visual.html">
+      <div class="card-top">
+        <div class="badge badge-chapter">01</div>
+        <div class="card-title">CSV Pain Points</div>
+      </div>
+      <div class="card-desc">Delimiter collision, encoding mismatch, nesting loss. Watch CSV break in real time with adversarial inputs.</div>
+      <div class="card-tags">
+        <span class="tag tag-interactive">interactive</span>
+        <span class="tag tag-animation">animation</span>
+      </div>
+    </a>
+
+    <!-- Ch02 -->
+    <a class="card" href="chapters/ch02_json/visual.html">
+      <div class="card-top">
+        <div class="badge badge-chapter">02</div>
+        <div class="card-title">JSON Anatomy</div>
+      </div>
+      <div class="card-desc">Byte-level structure analysis and overhead visualization. See exactly where JSON spends its bytes.</div>
+      <div class="card-tags">
+        <span class="tag tag-hex">hex-dump</span>
+        <span class="tag tag-chart">chart</span>
+      </div>
+    </a>
+
+    <!-- Ch03 -->
+    <a class="card" href="chapters/ch03_msgpack_cbor/visual.html">
+      <div class="card-top">
+        <div class="badge badge-chapter">03</div>
+        <div class="card-title">Binary JSON Comparison</div>
+      </div>
+      <div class="card-desc">Side-by-side JSON vs MessagePack hex dumps. See how binary formats eliminate key repetition and type markers.</div>
+      <div class="card-tags">
+        <span class="tag tag-hex">hex-dump</span>
+        <span class="tag tag-interactive">interactive</span>
+      </div>
+    </a>
+
+    <!-- Ch04 -->
+    <a class="card" href="chapters/ch04_protobuf/visual.html">
+      <div class="card-top">
+        <div class="badge badge-chapter">04</div>
+        <div class="card-title">Protobuf Wire Format</div>
+      </div>
+      <div class="card-desc">Varint calculator, tag encoder, and schema evolution explorer. Decode real protobuf bytes interactively.</div>
+      <div class="card-tags">
+        <span class="tag tag-interactive">interactive</span>
+        <span class="tag tag-calculator">calculator</span>
+        <span class="tag tag-hex">hex-dump</span>
+      </div>
+    </a>
+
+    <!-- Ch05 -->
+    <a class="card" href="chapters/ch05_flatbuffers/visual.html">
+      <div class="card-top">
+        <div class="badge badge-chapter">05</div>
+        <div class="card-title">FlatBuffers Zero-Copy</div>
+      </div>
+      <div class="card-desc">Buffer layout, vtable navigation, and read path animation. See why FlatBuffers can skip deserialization entirely.</div>
+      <div class="card-tags">
+        <span class="tag tag-animation">animation</span>
+        <span class="tag tag-hex">hex-dump</span>
+        <span class="tag tag-interactive">interactive</span>
+      </div>
+    </a>
+
+    <!-- Ch06 -->
+    <a class="card" href="chapters/ch06_avro/visual.html">
+      <div class="card-top">
+        <div class="badge badge-chapter">06</div>
+        <div class="card-title">Avro Schema Resolution</div>
+      </div>
+      <div class="card-desc">Writer/reader schema matching and registry flow. Visualize how Avro resolves schema differences at read time.</div>
+      <div class="card-tags">
+        <span class="tag tag-interactive">interactive</span>
+        <span class="tag tag-animation">animation</span>
+      </div>
+    </a>
+
+    <!-- Ch07 -->
+    <a class="card" href="chapters/ch07_capnproto/visual.html">
+      <div class="card-top">
+        <div class="badge badge-chapter">07</div>
+        <div class="card-title">Cap'n Proto Layout</div>
+      </div>
+      <div class="card-desc">Memory=wire comparison, pointer anatomy, and promise pipelining. The format where serialization cost is zero.</div>
+      <div class="card-tags">
+        <span class="tag tag-hex">hex-dump</span>
+        <span class="tag tag-animation">animation</span>
+        <span class="tag tag-interactive">interactive</span>
+      </div>
+    </a>
+
+    <!-- Ch08 -->
+    <a class="card" href="chapters/ch08_compression/visual.html">
+      <div class="card-top">
+        <div class="badge badge-chapter">08</div>
+        <div class="card-title">Compression Matrix</div>
+      </div>
+      <div class="card-desc">Format x compressor scatter plot and heatmap. Find the sweet spot between size and speed for every combination.</div>
+      <div class="card-tags">
+        <span class="tag tag-chart">chart</span>
+        <span class="tag tag-interactive">interactive</span>
+      </div>
+    </a>
+
+    <!-- Ch09 -->
+    <a class="card" href="chapters/ch09_schema_evolution/visual.html">
+      <div class="card-top">
+        <div class="badge badge-chapter">09</div>
+        <div class="card-title">Evolution Compatibility</div>
+      </div>
+      <div class="card-desc">Interactive compatibility matrix and version timeline. See which schema changes break backward/forward compatibility.</div>
+      <div class="card-tags">
+        <span class="tag tag-interactive">interactive</span>
+        <span class="tag tag-chart">chart</span>
+      </div>
+    </a>
+
+    <!-- Ch10 -->
+    <a class="card" href="chapters/ch10_choosing/visual.html">
+      <div class="card-top">
+        <div class="badge badge-chapter">10</div>
+        <div class="card-title">Format Decision Tool</div>
+      </div>
+      <div class="card-desc">Radar charts, decision tree, and scenario picker. Answer a few questions and get a format recommendation.</div>
+      <div class="card-tags">
+        <span class="tag tag-chart">chart</span>
+        <span class="tag tag-interactive">interactive</span>
+        <span class="tag tag-calculator">calculator</span>
+      </div>
+    </a>
+
+    <!-- Ch11 -->
+    <a class="card" href="chapters/ch11_synthesis/visual.html">
+      <div class="card-top">
+        <div class="badge badge-chapter">11</div>
+        <div class="card-title">The Dashboard</div>
+      </div>
+      <div class="card-desc">Head-to-head benchmarks, cost calculator, and the full journey. Everything you learned, in one interactive view.</div>
+      <div class="card-tags">
+        <span class="tag tag-chart">chart</span>
+        <span class="tag tag-calculator">calculator</span>
+        <span class="tag tag-interactive">interactive</span>
+      </div>
+    </a>
+
+    <!-- Section: Appendices -->
+    <div class="section-divider">
+      <div class="line"></div>
+      <div class="label">Appendices</div>
+      <div class="line"></div>
+    </div>
+
+    <!-- Appendix A -->
+    <a class="card" href="appendices/appendix_a_custom_binary/visual.html">
+      <div class="card-top">
+        <div class="badge badge-appendix">A</div>
+        <div class="card-title">TLV Binary Format</div>
+      </div>
+      <div class="card-desc">Custom Type-Length-Value encoding visualizer. Add fields interactively and watch the color-coded bytes update in real time.</div>
+      <div class="card-tags">
+        <span class="tag tag-interactive">interactive</span>
+        <span class="tag tag-hex">hex-dump</span>
+      </div>
+    </a>
+
+    <!-- Appendix B -->
+    <a class="card" href="appendices/appendix_b_streaming_serialization/visual.html">
+      <div class="card-top">
+        <div class="badge badge-appendix">B</div>
+        <div class="card-title">Streaming Serialization</div>
+      </div>
+      <div class="card-desc">Array vs stream comparison animation. Watch records arrive one by one and see the time-to-first-record advantage of streaming.</div>
+      <div class="card-tags">
+        <span class="tag tag-animation">animation</span>
+        <span class="tag tag-chart">chart</span>
+        <span class="tag tag-interactive">interactive</span>
+      </div>
+    </a>
+
+  </div>
+</div>
+
+<div class="footer">
+  Serialization: From CSV to Cap'n Proto
+</div>
+
+</body>
+</html>

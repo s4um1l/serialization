@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Appendix A: TLV Binary Format Visualizer</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface2: #21262d;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text-dim: #8b949e;
+  --accent: #58a6ff;
+  --purple: #bc8cff;
+  --cyan: #56d4dd;
+  --green: #3fb950;
+  --orange: #d29922;
+  --red: #f85149;
+  --pink: #db61a2;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 0 0 40px;
+}
+h1 { text-align: center; padding: 24px 16px 8px; font-size: 1.4rem; color: var(--accent); }
+.subtitle { text-align: center; color: var(--text-dim); font-size: 0.85rem; margin-bottom: 20px; }
+
+/* Layout */
+.container { max-width: 960px; margin: 0 auto; padding: 0 16px; }
+
+/* Legend */
+.legend {
+  display: flex; flex-wrap: wrap; gap: 12px; justify-content: center;
+  margin-bottom: 20px; padding: 12px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px;
+}
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-dim); }
+.legend-swatch { width: 14px; height: 14px; border-radius: 3px; }
+
+/* Field editor */
+.field-editor {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 16px; margin-bottom: 20px;
+}
+.field-editor h2 { font-size: 0.95rem; color: var(--accent); margin-bottom: 12px; }
+.fields-list { display: flex; flex-direction: column; gap: 8px; }
+.field-row {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 8px; background: var(--surface2); border-radius: 6px;
+}
+.field-row select, .field-row input {
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; padding: 4px 8px; font-family: inherit; font-size: 0.8rem;
+}
+.field-row input[type="number"] { width: 60px; }
+.field-row input[type="text"] { width: 180px; }
+.field-row select { width: 100px; }
+.field-label { font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; min-width: 50px; }
+.btn {
+  padding: 5px 12px; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--surface2); color: var(--text); cursor: pointer;
+  font-family: inherit; font-size: 0.8rem; transition: all 0.15s;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn-add { border-color: var(--green); color: var(--green); }
+.btn-add:hover { background: var(--green); color: var(--bg); }
+.btn-remove { border-color: var(--red); color: var(--red); padding: 5px 8px; }
+.btn-remove:hover { background: var(--red); color: var(--bg); }
+
+/* Hex dump */
+.hex-section {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 16px; margin-bottom: 20px;
+}
+.hex-section h2 { font-size: 0.95rem; color: var(--accent); margin-bottom: 12px; }
+.hex-dump { font-size: 0.82rem; line-height: 1.7; word-break: break-all; }
+.hex-byte {
+  display: inline-block; padding: 2px 4px; margin: 1px; border-radius: 3px;
+  cursor: pointer; transition: all 0.15s; position: relative;
+}
+.hex-byte:hover { transform: scale(1.15); z-index: 1; }
+.hex-byte.type-byte { background: rgba(88, 166, 255, 0.25); color: var(--accent); }
+.hex-byte.field-id-byte { background: rgba(188, 140, 255, 0.25); color: var(--purple); }
+.hex-byte.length-byte { background: rgba(210, 153, 34, 0.25); color: var(--orange); }
+.hex-byte.value-byte-uint { background: rgba(63, 185, 80, 0.25); color: var(--green); }
+.hex-byte.value-byte-str { background: rgba(219, 97, 162, 0.25); color: var(--pink); }
+.hex-byte.value-byte-float { background: rgba(86, 212, 221, 0.25); color: var(--cyan); }
+.hex-byte.value-byte-bool { background: rgba(248, 81, 73, 0.25); color: var(--red); }
+.hex-byte.highlight { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Field separator */
+.field-sep {
+  display: block; height: 1px; margin: 4px 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+/* Info panel */
+.info-panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 16px; margin-bottom: 20px;
+  min-height: 60px;
+}
+.info-panel h2 { font-size: 0.95rem; color: var(--accent); margin-bottom: 8px; }
+.info-detail { font-size: 0.8rem; color: var(--text-dim); line-height: 1.6; }
+.info-detail span { color: var(--text); }
+
+/* Stats */
+.stats {
+  display: flex; gap: 16px; flex-wrap: wrap; justify-content: center;
+  margin-bottom: 20px;
+}
+.stat-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 12px 20px; text-align: center; min-width: 120px;
+}
+.stat-value { font-size: 1.4rem; color: var(--accent); font-weight: bold; }
+.stat-label { font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; margin-top: 2px; }
+
+/* TLV structure diagram */
+.structure-diagram {
+  display: flex; gap: 0; margin: 16px 0; justify-content: center; flex-wrap: wrap;
+}
+.struct-block {
+  padding: 8px 12px; text-align: center; font-size: 0.75rem;
+  border: 1px solid var(--border);
+}
+.struct-block.type { background: rgba(88, 166, 255, 0.15); color: var(--accent); border-color: var(--accent); }
+.struct-block.fid { background: rgba(188, 140, 255, 0.15); color: var(--purple); border-color: var(--purple); }
+.struct-block.len { background: rgba(210, 153, 34, 0.15); color: var(--orange); border-color: var(--orange); }
+.struct-block.val { background: rgba(63, 185, 80, 0.15); color: var(--green); border-color: var(--green); flex-grow: 1; min-width: 100px; }
+.struct-label { font-size: 0.6rem; color: var(--text-dim); display: block; }
+</style>
+</head>
+<body>
+<h1>Appendix A: TLV Binary Format Visualizer</h1>
+<p class="subtitle">Type-Length-Value encoding -- add fields and watch the bytes change</p>
+
+<div class="container">
+  <!-- Structure diagram -->
+  <div style="margin-bottom:20px">
+    <div class="structure-diagram">
+      <div class="struct-block type"><span class="struct-label">1 byte</span>Type</div>
+      <div class="struct-block fid"><span class="struct-label">1 byte</span>Field ID</div>
+      <div class="struct-block len"><span class="struct-label">2 bytes LE</span>Length</div>
+      <div class="struct-block val"><span class="struct-label">N bytes</span>Value</div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item"><div class="legend-swatch" style="background:rgba(88,166,255,0.4)"></div>Type</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:rgba(188,140,255,0.4)"></div>Field ID</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:rgba(210,153,34,0.4)"></div>Length</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:rgba(63,185,80,0.4)"></div>uint32 value</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:rgba(219,97,162,0.4)"></div>string value</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:rgba(86,212,221,0.4)"></div>float64 value</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:rgba(248,81,73,0.4)"></div>bool value</div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat-card"><div class="stat-value" id="statFields">0</div><div class="stat-label">Fields</div></div>
+    <div class="stat-card"><div class="stat-value" id="statHeader">0</div><div class="stat-label">Header Bytes</div></div>
+    <div class="stat-card"><div class="stat-value" id="statPayload">0</div><div class="stat-label">Payload Bytes</div></div>
+    <div class="stat-card"><div class="stat-value" id="statTotal">0</div><div class="stat-label">Total Bytes</div></div>
+    <div class="stat-card"><div class="stat-value" id="statOverhead">0%</div><div class="stat-label">Overhead</div></div>
+  </div>
+
+  <!-- Field editor -->
+  <div class="field-editor">
+    <h2>Fields <button class="btn btn-add" onclick="addField()" style="margin-left:12px">+ Add Field</button></h2>
+    <div class="fields-list" id="fieldsList"></div>
+  </div>
+
+  <!-- Hex dump -->
+  <div class="hex-section">
+    <h2>Wire Bytes</h2>
+    <div class="hex-dump" id="hexDump"></div>
+  </div>
+
+  <!-- Info panel -->
+  <div class="info-panel">
+    <h2>Byte Inspector</h2>
+    <div class="info-detail" id="infoDetail">Hover over a byte above to inspect it.</div>
+  </div>
+</div>
+
+<script>
+const TYPE_CODES = {
+  uint32: 0x01, string: 0x02, float64: 0x05, bool: 0x06
+};
+const TYPE_NAMES = { 0x01:'uint32', 0x02:'string', 0x05:'float64', 0x06:'bool' };
+const VALUE_CLASSES = {
+  0x01: 'value-byte-uint', 0x02: 'value-byte-str',
+  0x05: 'value-byte-float', 0x06: 'value-byte-bool'
+};
+
+let fields = [
+  { type: 'uint32', id: 1, value: '42' },
+  { type: 'string', id: 2, value: 'Burger Palace' },
+  { type: 'uint32', id: 3, value: '2598' },
+  { type: 'float64', id: 4, value: '40.748817' },
+  { type: 'bool', id: 5, value: 'true' },
+];
+let nextFieldId = 6;
+
+function encodeValue(type, val) {
+  if (type === 'uint32') {
+    const n = parseInt(val) || 0;
+    const buf = new ArrayBuffer(4);
+    new DataView(buf).setUint32(0, n, true);
+    return new Uint8Array(buf);
+  } else if (type === 'string') {
+    return new TextEncoder().encode(val || '');
+  } else if (type === 'float64') {
+    const f = parseFloat(val) || 0;
+    const buf = new ArrayBuffer(8);
+    new DataView(buf).setFloat64(0, f, true);
+    return new Uint8Array(buf);
+  } else if (type === 'bool') {
+    return new Uint8Array([val === 'true' || val === '1' ? 1 : 0]);
+  }
+  return new Uint8Array(0);
+}
+
+function encodeField(f) {
+  const typeCode = TYPE_CODES[f.type];
+  const valBytes = encodeValue(f.type, f.value);
+  const lenBuf = new ArrayBuffer(2);
+  new DataView(lenBuf).setUint16(0, valBytes.length, true);
+  const lenBytes = new Uint8Array(lenBuf);
+  const header = new Uint8Array([typeCode, f.id, lenBytes[0], lenBytes[1]]);
+  const result = new Uint8Array(header.length + valBytes.length);
+  result.set(header, 0);
+  result.set(valBytes, header.length);
+  return { bytes: result, typeCode, headerLen: 4, valueLen: valBytes.length };
+}
+
+function hex(b) { return b.toString(16).toUpperCase().padStart(2, '0'); }
+
+function renderFields() {
+  const list = document.getElementById('fieldsList');
+  list.innerHTML = '';
+  fields.forEach((f, i) => {
+    const row = document.createElement('div');
+    row.className = 'field-row';
+    row.innerHTML = `
+      <span class="field-label">ID: ${f.id}</span>
+      <select onchange="fields[${i}].type=this.value;render()">
+        ${['uint32','string','float64','bool'].map(t =>
+          `<option value="${t}" ${t===f.type?'selected':''}>${t}</option>`
+        ).join('')}
+      </select>
+      ${f.type === 'bool'
+        ? `<select onchange="fields[${i}].value=this.value;render()">
+            <option value="true" ${f.value==='true'?'selected':''}>true</option>
+            <option value="false" ${f.value!=='true'?'selected':''}>false</option>
+           </select>`
+        : `<input type="${f.type==='string'?'text':'text'}" value="${f.value}"
+            oninput="fields[${i}].value=this.value;render()"
+            placeholder="${f.type==='string'?'text':'number'}">`
+      }
+      <button class="btn btn-remove" onclick="fields.splice(${i},1);render()">x</button>
+    `;
+    list.appendChild(row);
+  });
+}
+
+function renderHex() {
+  const dump = document.getElementById('hexDump');
+  dump.innerHTML = '';
+  let totalHeader = 0, totalPayload = 0;
+  const encodedFields = fields.map(f => encodeField(f));
+
+  encodedFields.forEach((ef, fi) => {
+    const f = fields[fi];
+    totalHeader += 4;
+    totalPayload += ef.valueLen;
+    const valClass = VALUE_CLASSES[ef.typeCode] || 'value-byte-uint';
+
+    // Type byte
+    const typeByte = ef.bytes[0];
+    dump.innerHTML += `<span class="hex-byte type-byte" data-info="Field #${fi}: Type byte = 0x${hex(typeByte)} (${TYPE_NAMES[typeByte]})">${hex(typeByte)}</span>`;
+
+    // Field ID byte
+    const fidByte = ef.bytes[1];
+    dump.innerHTML += `<span class="hex-byte field-id-byte" data-info="Field #${fi}: Field ID = ${fidByte}">${hex(fidByte)}</span>`;
+
+    // Length bytes (2 LE)
+    for (let j = 2; j < 4; j++) {
+      const label = j === 2 ? 'low' : 'high';
+      dump.innerHTML += `<span class="hex-byte length-byte" data-info="Field #${fi}: Length ${label} byte = 0x${hex(ef.bytes[j])} (total length: ${ef.valueLen})">${hex(ef.bytes[j])}</span>`;
+    }
+
+    // Value bytes
+    for (let j = 4; j < ef.bytes.length; j++) {
+      let detail = `Field #${fi}: Value byte [${j-4}] = 0x${hex(ef.bytes[j])}`;
+      if (ef.typeCode === 0x01 && ef.valueLen === 4) {
+        const dv = new DataView(ef.bytes.buffer, ef.bytes.byteOffset + 4, 4);
+        detail += ` (uint32 = ${dv.getUint32(0, true)})`;
+      } else if (ef.typeCode === 0x02) {
+        const ch = String.fromCharCode(ef.bytes[j]);
+        detail += ` (char '${ch}')`;
+      } else if (ef.typeCode === 0x05 && ef.valueLen === 8) {
+        const dv = new DataView(ef.bytes.buffer, ef.bytes.byteOffset + 4, 8);
+        detail += ` (float64 = ${dv.getFloat64(0, true)})`;
+      } else if (ef.typeCode === 0x06) {
+        detail += ` (bool = ${ef.bytes[j] ? 'true' : 'false'})`;
+      }
+      dump.innerHTML += `<span class="hex-byte ${valClass}" data-info="${detail}">${hex(ef.bytes[j])}</span>`;
+    }
+
+    // Field separator
+    if (fi < encodedFields.length - 1) {
+      dump.innerHTML += '<span class="field-sep"></span>';
+    }
+  });
+
+  // Stats
+  const total = totalHeader + totalPayload;
+  document.getElementById('statFields').textContent = fields.length;
+  document.getElementById('statHeader').textContent = totalHeader;
+  document.getElementById('statPayload').textContent = totalPayload;
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statOverhead').textContent = total > 0
+    ? Math.round(totalHeader / total * 100) + '%' : '0%';
+
+  // Attach hover listeners
+  dump.querySelectorAll('.hex-byte').forEach(el => {
+    el.addEventListener('mouseenter', () => {
+      document.getElementById('infoDetail').innerHTML = `<span>${el.dataset.info}</span>`;
+      el.classList.add('highlight');
+    });
+    el.addEventListener('mouseleave', () => {
+      el.classList.remove('highlight');
+    });
+  });
+}
+
+function addField() {
+  const id = nextFieldId++;
+  fields.push({ type: 'string', id, value: '' });
+  render();
+}
+
+function render() {
+  renderFields();
+  renderHex();
+}
+
+render();
+</script>
+</body>
+</html>
