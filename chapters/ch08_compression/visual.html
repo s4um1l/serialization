@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 08: Compression Visualizations</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --surface2: #0f3460;
+    --accent: #e94560;
+    --accent2: #0ea5e9;
+    --text: #e0e0e0;
+    --text-dim: #8892a4;
+    --green: #10b981;
+    --yellow: #f59e0b;
+    --red: #ef4444;
+    --orange: #f97316;
+    --purple: #a855f7;
+    --border: #2a2a4a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  h1 {
+    font-size: 2rem;
+    color: var(--accent);
+    margin-bottom: 0.5rem;
+  }
+
+  h2 {
+    font-size: 1.3rem;
+    color: var(--accent2);
+    margin-bottom: 1rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .subtitle {
+    color: var(--text-dim);
+    margin-bottom: 2rem;
+    font-size: 0.9rem;
+  }
+
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+  }
+
+  .controls {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .controls label {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+  }
+
+  button, select {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 0.4rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+  }
+
+  button:hover, select:hover {
+    border-color: var(--accent2);
+  }
+
+  button.active {
+    background: var(--accent2);
+    color: #fff;
+    border-color: var(--accent2);
+  }
+
+  canvas {
+    width: 100%;
+    border-radius: 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+  }
+
+  .tooltip {
+    position: absolute;
+    background: #0d1117;
+    border: 1px solid var(--accent2);
+    border-radius: 8px;
+    padding: 0.8rem;
+    font-size: 0.8rem;
+    pointer-events: none;
+    z-index: 100;
+    max-width: 280px;
+    line-height: 1.5;
+    display: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
+
+  .tooltip .label { color: var(--accent); font-weight: bold; }
+  .tooltip .value { color: var(--text); }
+  .tooltip .dim { color: var(--text-dim); }
+
+  .heatmap-grid {
+    display: grid;
+    gap: 3px;
+    margin-top: 1rem;
+  }
+
+  .heatmap-cell {
+    border-radius: 6px;
+    padding: 0.6rem;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    font-size: 0.8rem;
+    line-height: 1.3;
+    position: relative;
+  }
+
+  .heatmap-cell:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 12px rgba(233, 69, 96, 0.3);
+    z-index: 10;
+  }
+
+  .heatmap-cell .cell-label {
+    font-size: 0.7rem;
+    color: rgba(255,255,255,0.7);
+  }
+
+  .heatmap-cell .cell-value {
+    font-size: 1rem;
+    font-weight: bold;
+  }
+
+  .heatmap-header {
+    padding: 0.5rem;
+    text-align: center;
+    font-weight: bold;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+  }
+
+  .heatmap-row-label {
+    padding: 0.5rem;
+    text-align: right;
+    font-weight: bold;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .legend {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.8rem;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+  }
+
+  .legend-bar {
+    width: 200px;
+    height: 12px;
+    border-radius: 6px;
+    background: linear-gradient(to right, #10b981, #f59e0b, #ef4444);
+  }
+
+  .slider-container {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 1rem 0;
+  }
+
+  .slider-container input[type="range"] {
+    flex: 1;
+    accent-color: var(--accent2);
+    max-width: 400px;
+  }
+
+  .slider-value {
+    background: var(--surface2);
+    padding: 0.3rem 0.8rem;
+    border-radius: 6px;
+    min-width: 80px;
+    text-align: center;
+    font-weight: bold;
+    color: var(--accent2);
+  }
+
+  .dict-chart {
+    display: flex;
+    gap: 2rem;
+    align-items: flex-end;
+    margin-top: 1rem;
+    padding: 1rem;
+    height: 300px;
+  }
+
+  .dict-bar-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+    justify-content: flex-end;
+  }
+
+  .dict-bar {
+    width: 60px;
+    border-radius: 6px 6px 0 0;
+    transition: height 0.5s ease;
+    position: relative;
+  }
+
+  .dict-bar-label {
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    text-align: center;
+  }
+
+  .dict-bar-value {
+    position: absolute;
+    top: -1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.75rem;
+    font-weight: bold;
+    white-space: nowrap;
+  }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+
+  .stat-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+  }
+
+  .stat-card .stat-value {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--accent2);
+  }
+
+  .stat-card .stat-label {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    margin-top: 0.3rem;
+  }
+
+  .detail-panel {
+    background: var(--bg);
+    border: 1px solid var(--accent2);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-top: 1rem;
+    display: none;
+    font-size: 0.85rem;
+    line-height: 1.8;
+  }
+
+  .detail-panel.visible {
+    display: block;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Chapter 08: Compression</h1>
+  <p class="subtitle">
+    How gzip, zstd, and lz4 interact with different serialization formats.
+    FoodDash processes 1M msg/s -- compression can save $150K/year in bandwidth.
+  </p>
+
+  <!-- ============================================================ -->
+  <!-- SCATTER PLOT -->
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Compress Time vs Compressed Size</h2>
+    <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:1rem;">
+      Each dot is a format+compressor combination. Bottom-left is ideal (small and fast).
+      Hover for details.
+    </p>
+    <div class="controls">
+      <button id="btn-single" class="active" onclick="setScatterView('single')">Single Message</button>
+      <button id="btn-batch" onclick="setScatterView('batch')">Batch (x100)</button>
+    </div>
+    <canvas id="scatterCanvas" width="1100" height="500"></canvas>
+    <div class="tooltip" id="scatterTooltip"></div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- HEATMAP -->
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Format x Compressor Heatmap</h2>
+    <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:1rem;">
+      Cell color shows compressed size (green = small, red = large). Click a cell for details.
+    </p>
+    <div class="controls">
+      <label>Metric:</label>
+      <select id="heatmapMetric" onchange="renderHeatmap()">
+        <option value="compressed_bytes">Compressed Size (bytes)</option>
+        <option value="ratio">Compression Ratio</option>
+        <option value="encode_compress_us">Encode + Compress (us)</option>
+        <option value="decompress_decode_us">Decompress + Decode (us)</option>
+      </select>
+    </div>
+    <div id="heatmapContainer"></div>
+    <div class="legend">
+      <span>Best</span>
+      <div class="legend-bar"></div>
+      <span>Worst</span>
+    </div>
+    <div id="detailPanel" class="detail-panel"></div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- DICTIONARY COMPRESSION -->
+  <!-- ============================================================ -->
+  <div class="section">
+    <h2>Dictionary Compression Demo</h2>
+    <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:1rem;">
+      See how compression ratio improves as the dictionary is trained on more samples.
+      Regular zstd (no dictionary) stays flat. Dictionary zstd improves dramatically.
+    </p>
+    <div class="slider-container">
+      <label>Training samples:</label>
+      <input type="range" id="dictSlider" min="0" max="5" value="5" oninput="updateDictDemo()">
+      <span class="slider-value" id="dictSliderValue">1000</span>
+    </div>
+
+    <div class="stats-row" id="dictStats"></div>
+
+    <canvas id="dictCanvas" width="1100" height="350"></canvas>
+  </div>
+
+</div>
+
+<script>
+// ====================================================================
+// DATA
+// ====================================================================
+
+const FORMATS = ['JSON', 'MsgPack', 'Protobuf', 'Avro'];
+const COMPRESSORS = ['none', 'gzip', 'zstd', 'lz4'];
+
+const FORMAT_COLORS = {
+  'JSON': '#e94560',
+  'MsgPack': '#0ea5e9',
+  'Protobuf': '#10b981',
+  'Avro': '#a855f7'
+};
+
+const COMPRESSOR_SHAPES = {
+  'none': 'circle',
+  'gzip': 'square',
+  'zstd': 'diamond',
+  'lz4': 'triangle'
+};
+
+// Single message data (typical order)
+const singleData = [
+  { format:'JSON', compressor:'none', serialized:1916, compressed:1916, ratio:1.0, enc_us:30, dec_us:16 },
+  { format:'JSON', compressor:'gzip', serialized:1916, compressed:775, ratio:2.47, enc_us:60, dec_us:19 },
+  { format:'JSON', compressor:'zstd', serialized:1916, compressed:795, ratio:2.41, enc_us:30, dec_us:13 },
+  { format:'JSON', compressor:'lz4', serialized:1916, compressed:1125, ratio:1.70, enc_us:20, dec_us:11 },
+  { format:'MsgPack', compressor:'none', serialized:1289, compressed:1289, ratio:1.0, enc_us:9, dec_us:5 },
+  { format:'MsgPack', compressor:'gzip', serialized:1289, compressed:775, ratio:1.66, enc_us:30, dec_us:10 },
+  { format:'MsgPack', compressor:'zstd', serialized:1289, compressed:760, ratio:1.70, enc_us:15, dec_us:7 },
+  { format:'MsgPack', compressor:'lz4', serialized:1289, compressed:989, ratio:1.30, enc_us:9, dec_us:5 },
+  { format:'Protobuf', compressor:'none', serialized:715, compressed:715, ratio:1.0, enc_us:22, dec_us:22 },
+  { format:'Protobuf', compressor:'gzip', serialized:715, compressed:540, ratio:1.32, enc_us:33, dec_us:26 },
+  { format:'Protobuf', compressor:'zstd', serialized:715, compressed:546, ratio:1.31, enc_us:28, dec_us:25 },
+  { format:'Protobuf', compressor:'lz4', serialized:715, compressed:644, ratio:1.11, enc_us:22, dec_us:23 },
+  { format:'Avro', compressor:'none', serialized:671, compressed:671, ratio:1.0, enc_us:27, dec_us:22 },
+  { format:'Avro', compressor:'gzip', serialized:671, compressed:497, ratio:1.35, enc_us:40, dec_us:27 },
+  { format:'Avro', compressor:'zstd', serialized:671, compressed:500, ratio:1.34, enc_us:35, dec_us:22 },
+  { format:'Avro', compressor:'lz4', serialized:671, compressed:601, ratio:1.12, enc_us:28, dec_us:23 },
+];
+
+// Batch data (100 orders)
+const batchData = [
+  { format:'JSON', compressor:'none', serialized:191300, compressed:191300, ratio:1.0, enc_us:3000, dec_us:1600 },
+  { format:'JSON', compressor:'gzip', serialized:191300, compressed:3125, ratio:61.2, enc_us:3400, dec_us:1620 },
+  { format:'JSON', compressor:'zstd', serialized:191300, compressed:1568, ratio:122.0, enc_us:3027, dec_us:1608 },
+  { format:'JSON', compressor:'lz4', serialized:191300, compressed:5127, ratio:37.3, enc_us:3035, dec_us:1610 },
+  { format:'MsgPack', compressor:'none', serialized:128900, compressed:128900, ratio:1.0, enc_us:900, dec_us:500 },
+  { format:'MsgPack', compressor:'gzip', serialized:128900, compressed:2400, ratio:53.7, enc_us:1300, dec_us:520 },
+  { format:'MsgPack', compressor:'zstd', serialized:128900, compressed:1200, ratio:107.4, enc_us:930, dec_us:510 },
+  { format:'MsgPack', compressor:'lz4', serialized:128900, compressed:3800, ratio:33.9, enc_us:935, dec_us:510 },
+  { format:'Protobuf', compressor:'none', serialized:71400, compressed:71400, ratio:1.0, enc_us:2200, dec_us:2200 },
+  { format:'Protobuf', compressor:'gzip', serialized:71400, compressed:1934, ratio:36.9, enc_us:2430, dec_us:2210 },
+  { format:'Protobuf', compressor:'zstd', serialized:71400, compressed:1347, ratio:53.0, enc_us:2217, dec_us:2206 },
+  { format:'Protobuf', compressor:'lz4', serialized:71400, compressed:3152, ratio:22.7, enc_us:2216, dec_us:2204 },
+  { format:'Avro', compressor:'none', serialized:67100, compressed:67100, ratio:1.0, enc_us:2700, dec_us:2200 },
+  { format:'Avro', compressor:'gzip', serialized:67100, compressed:1800, ratio:37.3, enc_us:2940, dec_us:2220 },
+  { format:'Avro', compressor:'zstd', serialized:67100, compressed:1250, ratio:53.7, enc_us:2727, dec_us:2206 },
+  { format:'Avro', compressor:'lz4', serialized:67100, compressed:2900, ratio:23.1, enc_us:2728, dec_us:2210 },
+];
+
+// Dictionary compression sweep data
+const dictSweepData = [
+  { samples: 0,    plain_ratio: 2.42, dict_ratio: 1.0,   plain_size: 793, dict_size: 1915 },
+  { samples: 10,   plain_ratio: 2.42, dict_ratio: 11.84, plain_size: 793, dict_size: 162 },
+  { samples: 50,   plain_ratio: 2.42, dict_ratio: 12.12, plain_size: 793, dict_size: 158 },
+  { samples: 100,  plain_ratio: 2.42, dict_ratio: 12.24, plain_size: 793, dict_size: 156 },
+  { samples: 250,  plain_ratio: 2.42, dict_ratio: 39.90, plain_size: 793, dict_size: 48 },
+  { samples: 1000, plain_ratio: 2.42, dict_ratio: 39.00, plain_size: 793, dict_size: 49 },
+];
+
+// ====================================================================
+// SCATTER PLOT
+// ====================================================================
+
+let currentScatterView = 'single';
+
+function setScatterView(view) {
+  currentScatterView = view;
+  document.getElementById('btn-single').classList.toggle('active', view === 'single');
+  document.getElementById('btn-batch').classList.toggle('active', view === 'batch');
+  renderScatter();
+}
+
+function drawShape(ctx, shape, x, y, size, color) {
+  ctx.fillStyle = color;
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  switch (shape) {
+    case 'circle':
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      break;
+    case 'square':
+      ctx.fillRect(x - size, y - size, size * 2, size * 2);
+      ctx.strokeRect(x - size, y - size, size * 2, size * 2);
+      break;
+    case 'diamond':
+      ctx.beginPath();
+      ctx.moveTo(x, y - size * 1.3);
+      ctx.lineTo(x + size, y);
+      ctx.lineTo(x, y + size * 1.3);
+      ctx.lineTo(x - size, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      break;
+    case 'triangle':
+      ctx.beginPath();
+      ctx.moveTo(x, y - size * 1.2);
+      ctx.lineTo(x + size, y + size * 0.8);
+      ctx.lineTo(x - size, y + size * 0.8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      break;
+  }
+}
+
+function renderScatter() {
+  const canvas = document.getElementById('scatterCanvas');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const W = rect.width;
+  const H = rect.height;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const data = currentScatterView === 'single' ? singleData : batchData;
+  const margin = { top: 40, right: 180, bottom: 50, left: 80 };
+  const plotW = W - margin.left - margin.right;
+  const plotH = H - margin.top - margin.bottom;
+
+  // Scales
+  const maxTime = Math.max(...data.map(d => d.enc_us)) * 1.15;
+  const maxSize = Math.max(...data.map(d => d.compressed)) * 1.15;
+
+  const xScale = v => margin.left + (v / maxTime) * plotW;
+  const yScale = v => margin.top + plotH - (v / maxSize) * plotH;
+
+  // Grid
+  ctx.strokeStyle = '#2a2a4a';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 5; i++) {
+    const x = margin.left + (i / 5) * plotW;
+    const y = margin.top + (i / 5) * plotH;
+    ctx.beginPath(); ctx.moveTo(x, margin.top); ctx.lineTo(x, margin.top + plotH); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(margin.left, y); ctx.lineTo(margin.left + plotW, y); ctx.stroke();
+  }
+
+  // Axes
+  ctx.strokeStyle = '#4a4a6a';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(margin.left, margin.top);
+  ctx.lineTo(margin.left, margin.top + plotH);
+  ctx.lineTo(margin.left + plotW, margin.top + plotH);
+  ctx.stroke();
+
+  // Labels
+  ctx.fillStyle = '#8892a4';
+  ctx.font = '12px monospace';
+  ctx.textAlign = 'center';
+  for (let i = 0; i <= 5; i++) {
+    const v = (maxTime * i / 5);
+    const label = v >= 1000 ? (v/1000).toFixed(1) + 'ms' : v.toFixed(0) + 'us';
+    ctx.fillText(label, xScale(v), margin.top + plotH + 20);
+  }
+  ctx.fillText('Encode + Compress Time', margin.left + plotW / 2, margin.top + plotH + 42);
+
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 5; i++) {
+    const v = maxSize * (5 - i) / 5;
+    let label;
+    if (v >= 10000) label = (v/1000).toFixed(0) + 'KB';
+    else if (v >= 1000) label = (v/1000).toFixed(1) + 'KB';
+    else label = v.toFixed(0) + 'B';
+    ctx.fillText(label, margin.left - 8, margin.top + (i / 5) * plotH + 4);
+  }
+
+  ctx.save();
+  ctx.translate(15, margin.top + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center';
+  ctx.fillText('Compressed Size', 0, 0);
+  ctx.restore();
+
+  // Points
+  const pointRadius = 8;
+  data.forEach(d => {
+    const x = xScale(d.enc_us);
+    const y = yScale(d.compressed);
+    const color = FORMAT_COLORS[d.format];
+    const shape = COMPRESSOR_SHAPES[d.compressor];
+    drawShape(ctx, shape, x, y, pointRadius, color);
+  });
+
+  // Legend
+  const legendX = W - margin.right + 20;
+  let legendY = margin.top + 10;
+
+  ctx.fillStyle = '#8892a4';
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('FORMATS', legendX, legendY);
+  legendY += 20;
+  FORMATS.forEach(f => {
+    ctx.fillStyle = FORMAT_COLORS[f];
+    ctx.beginPath();
+    ctx.arc(legendX + 6, legendY - 4, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#e0e0e0';
+    ctx.font = '11px monospace';
+    ctx.fillText(f, legendX + 18, legendY);
+    legendY += 20;
+  });
+
+  legendY += 10;
+  ctx.fillStyle = '#8892a4';
+  ctx.font = 'bold 11px monospace';
+  ctx.fillText('COMPRESSORS', legendX, legendY);
+  legendY += 20;
+  Object.entries(COMPRESSOR_SHAPES).forEach(([name, shape]) => {
+    drawShape(ctx, shape, legendX + 6, legendY - 4, 5, '#8892a4');
+    ctx.fillStyle = '#e0e0e0';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(name, legendX + 18, legendY);
+    legendY += 20;
+  });
+
+  // Store points for hover
+  canvas._points = data.map(d => ({
+    x: xScale(d.enc_us),
+    y: yScale(d.compressed),
+    data: d
+  }));
+}
+
+// Scatter hover
+document.getElementById('scatterCanvas').addEventListener('mousemove', function(e) {
+  const rect = this.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const tooltip = document.getElementById('scatterTooltip');
+  const points = this._points || [];
+
+  let found = null;
+  for (const p of points) {
+    const dist = Math.sqrt((mx - p.x) ** 2 + (my - p.y) ** 2);
+    if (dist < 15) { found = p; break; }
+  }
+
+  if (found) {
+    const d = found.data;
+    tooltip.innerHTML = `
+      <div class="label">${d.format} + ${d.compressor}</div>
+      <div class="value">Serialized: ${d.serialized.toLocaleString()} bytes</div>
+      <div class="value">Compressed: ${d.compressed.toLocaleString()} bytes</div>
+      <div class="value">Ratio: ${d.ratio.toFixed(2)}x</div>
+      <div class="dim">Enc+Comp: ${d.enc_us} us</div>
+      <div class="dim">Dec+Decomp: ${d.dec_us} us</div>
+    `;
+    tooltip.style.display = 'block';
+    tooltip.style.left = (e.pageX + 15) + 'px';
+    tooltip.style.top = (e.pageY - 10) + 'px';
+  } else {
+    tooltip.style.display = 'none';
+  }
+});
+
+document.getElementById('scatterCanvas').addEventListener('mouseleave', function() {
+  document.getElementById('scatterTooltip').style.display = 'none';
+});
+
+// ====================================================================
+// HEATMAP
+// ====================================================================
+
+function getHeatColor(value, min, max, invert) {
+  const t = max === min ? 0.5 : (value - min) / (max - min);
+  const tn = invert ? 1 - t : t;
+  // green -> yellow -> red
+  const r = tn < 0.5 ? Math.round(16 + tn * 2 * 229) : 239;
+  const g = tn < 0.5 ? 185 : Math.round(185 - (tn - 0.5) * 2 * 117);
+  const b = tn < 0.5 ? Math.round(129 - tn * 2 * 70) : Math.round(59 + (tn - 0.5) * 2 * 9);
+  return `rgb(${r},${g},${b})`;
+}
+
+function renderHeatmap() {
+  const metric = document.getElementById('heatmapMetric').value;
+  const container = document.getElementById('heatmapContainer');
+
+  const metricMap = {
+    'compressed_bytes': { key: 'compressed', label: 'bytes', invert: false },
+    'ratio': { key: 'ratio', label: 'x', invert: true },
+    'encode_compress_us': { key: 'enc_us', label: 'us', invert: false },
+    'decompress_decode_us': { key: 'dec_us', label: 'us', invert: false },
+  };
+  const mInfo = metricMap[metric];
+
+  const cols = COMPRESSORS.length + 1;
+  container.innerHTML = '';
+  const grid = document.createElement('div');
+  grid.className = 'heatmap-grid';
+  grid.style.gridTemplateColumns = `120px repeat(${COMPRESSORS.length}, 1fr)`;
+
+  // Header row
+  grid.innerHTML += '<div class="heatmap-header"></div>';
+  COMPRESSORS.forEach(c => {
+    grid.innerHTML += `<div class="heatmap-header">${c}</div>`;
+  });
+
+  const values = singleData.map(d => d[mInfo.key]);
+  const minV = Math.min(...values);
+  const maxV = Math.max(...values);
+
+  FORMATS.forEach(f => {
+    grid.innerHTML += `<div class="heatmap-row-label">${f}</div>`;
+    COMPRESSORS.forEach(c => {
+      const d = singleData.find(x => x.format === f && x.compressor === c);
+      const v = d[mInfo.key];
+      const color = getHeatColor(v, minV, maxV, mInfo.invert);
+      const textColor = '#fff';
+      const displayVal = mInfo.label === 'x' ? v.toFixed(2) + 'x' :
+                         v >= 1000 ? (v/1000).toFixed(1) + 'K' : v;
+      grid.innerHTML += `
+        <div class="heatmap-cell" style="background:${color};color:${textColor}"
+             onclick="showDetail('${f}','${c}')"
+             title="${f}+${c}">
+          <div class="cell-value">${displayVal}</div>
+          <div class="cell-label">${mInfo.label}</div>
+        </div>
+      `;
+    });
+  });
+
+  container.appendChild(grid);
+}
+
+function showDetail(format, compressor) {
+  const d = singleData.find(x => x.format === format && x.compressor === compressor);
+  const panel = document.getElementById('detailPanel');
+  panel.className = 'detail-panel visible';
+  panel.innerHTML = `
+    <strong style="color:var(--accent)">${format} + ${compressor}</strong><br>
+    Serialized size: <strong>${d.serialized.toLocaleString()}</strong> bytes<br>
+    Compressed size: <strong>${d.compressed.toLocaleString()}</strong> bytes<br>
+    Compression ratio: <strong>${d.ratio.toFixed(2)}x</strong><br>
+    Encode + compress: <strong>${d.enc_us}</strong> us<br>
+    Decompress + decode: <strong>${d.dec_us}</strong> us<br>
+    <span style="color:var(--text-dim)">
+    ${compressor === 'none' ? 'No compression applied.' :
+      `Compression saves ${d.serialized - d.compressed} bytes (${((1 - d.compressed/d.serialized)*100).toFixed(1)}% reduction).
+       At 1M msg/s that is ${((d.serialized - d.compressed) * 1e6 / 1e9 * 86400).toFixed(1)} GB/day saved.`}
+    </span>
+  `;
+}
+
+// ====================================================================
+// DICTIONARY COMPRESSION DEMO
+// ====================================================================
+
+const DICT_STEPS = [0, 10, 50, 100, 250, 1000];
+
+function updateDictDemo() {
+  const slider = document.getElementById('dictSlider');
+  const idx = parseInt(slider.value);
+  const data = dictSweepData[idx];
+
+  document.getElementById('dictSliderValue').textContent = data.samples === 0 ? 'No dict' : data.samples;
+
+  // Stats
+  const statsDiv = document.getElementById('dictStats');
+  statsDiv.innerHTML = `
+    <div class="stat-card">
+      <div class="stat-value">${data.plain_size}</div>
+      <div class="stat-label">Regular zstd (bytes)</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color:${data.samples === 0 ? 'var(--text-dim)' : 'var(--green)'}">${data.samples === 0 ? 'N/A' : data.dict_size}</div>
+      <div class="stat-label">Dict zstd (bytes)</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${data.plain_ratio.toFixed(2)}x</div>
+      <div class="stat-label">Regular ratio</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color:${data.samples === 0 ? 'var(--text-dim)' : 'var(--green)'}">${data.samples === 0 ? 'N/A' : data.dict_ratio.toFixed(1) + 'x'}</div>
+      <div class="stat-label">Dict ratio</div>
+    </div>
+  `;
+
+  renderDictChart(idx);
+}
+
+function renderDictChart(highlightIdx) {
+  const canvas = document.getElementById('dictCanvas');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const W = rect.width;
+  const H = rect.height;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const margin = { top: 30, right: 30, bottom: 50, left: 60 };
+  const plotW = W - margin.left - margin.right;
+  const plotH = H - margin.top - margin.bottom;
+
+  const maxRatio = 45;
+  const barGroupW = plotW / dictSweepData.length;
+  const barW = barGroupW * 0.3;
+  const gap = 4;
+
+  // Grid
+  ctx.strokeStyle = '#2a2a4a';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 5; i++) {
+    const y = margin.top + (i / 5) * plotH;
+    ctx.beginPath();
+    ctx.moveTo(margin.left, y);
+    ctx.lineTo(margin.left + plotW, y);
+    ctx.stroke();
+
+    ctx.fillStyle = '#8892a4';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'right';
+    const label = ((5 - i) / 5 * maxRatio).toFixed(0) + 'x';
+    ctx.fillText(label, margin.left - 8, y + 4);
+  }
+
+  // Axis label
+  ctx.save();
+  ctx.translate(14, margin.top + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#8892a4';
+  ctx.font = '11px monospace';
+  ctx.fillText('Compression Ratio', 0, 0);
+  ctx.restore();
+
+  // Bars
+  dictSweepData.forEach((d, i) => {
+    const cx = margin.left + i * barGroupW + barGroupW / 2;
+    const isHighlight = i === highlightIdx;
+
+    // Plain bar
+    const plainH = (d.plain_ratio / maxRatio) * plotH;
+    const plainY = margin.top + plotH - plainH;
+    ctx.fillStyle = isHighlight ? '#f97316' : 'rgba(249,115,22,0.4)';
+    ctx.fillRect(cx - barW - gap/2, plainY, barW, plainH);
+    ctx.strokeStyle = '#f97316';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cx - barW - gap/2, plainY, barW, plainH);
+
+    // Dict bar
+    if (d.samples > 0) {
+      const dictH = Math.min((d.dict_ratio / maxRatio) * plotH, plotH);
+      const dictY = margin.top + plotH - dictH;
+      ctx.fillStyle = isHighlight ? '#10b981' : 'rgba(16,185,129,0.4)';
+      ctx.fillRect(cx + gap/2, dictY, barW, dictH);
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cx + gap/2, dictY, barW, dictH);
+
+      // Value label
+      if (isHighlight) {
+        ctx.fillStyle = '#10b981';
+        ctx.font = 'bold 11px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(d.dict_ratio.toFixed(1) + 'x', cx + gap/2 + barW/2, dictY - 5);
+      }
+    }
+
+    // Value label for plain
+    if (isHighlight) {
+      ctx.fillStyle = '#f97316';
+      ctx.font = 'bold 11px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(d.plain_ratio.toFixed(1) + 'x', cx - barW/2 - gap/2, plainY - 5);
+    }
+
+    // X label
+    ctx.fillStyle = isHighlight ? '#e0e0e0' : '#8892a4';
+    ctx.font = (isHighlight ? 'bold ' : '') + '11px monospace';
+    ctx.textAlign = 'center';
+    const xLabel = d.samples === 0 ? 'No dict' : d.samples.toString();
+    ctx.fillText(xLabel, cx, margin.top + plotH + 18);
+  });
+
+  // X axis label
+  ctx.fillStyle = '#8892a4';
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Training Samples', margin.left + plotW / 2, margin.top + plotH + 42);
+
+  // Legend
+  ctx.fillStyle = '#f97316';
+  ctx.fillRect(W - 200, margin.top, 12, 12);
+  ctx.fillStyle = '#e0e0e0';
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('Regular zstd', W - 182, margin.top + 10);
+
+  ctx.fillStyle = '#10b981';
+  ctx.fillRect(W - 200, margin.top + 20, 12, 12);
+  ctx.fillStyle = '#e0e0e0';
+  ctx.fillText('Dictionary zstd', W - 182, margin.top + 30);
+}
+
+// ====================================================================
+// INIT
+// ====================================================================
+
+window.addEventListener('resize', () => {
+  renderScatter();
+  renderHeatmap();
+  updateDictDemo();
+});
+
+renderScatter();
+renderHeatmap();
+updateDictDemo();
+</script>
+
+</body>
+</html>
